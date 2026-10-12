@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from pytest_homeassistant_custom_component.typing import WebSocketGenerator
 
@@ -48,7 +49,10 @@ async def test_configure_survives_reload(
 
     assert entry.title == "Biuro"
     assert entry.options["presence_entities"] == ["binary_sensor.desk"]
-    assert hass.states.get("binary_sensor.office_occupancy").state == "on"
+    occupancy = er.async_get(hass).async_get_entity_id(
+        "binary_sensor", DOMAIN, f"{entry.entry_id}_occupancy"
+    )
+    assert hass.states.get(occupancy).state == "on"
 
     # The subscription follows the reloaded controller.
     while True:
