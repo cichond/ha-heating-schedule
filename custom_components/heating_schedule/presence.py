@@ -25,7 +25,7 @@ def entity_present(state: State | None) -> bool | None:
     """True/False, or None when the state is unknown."""
     if state is None or state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
         return None
-    if state.domain in _HOME_DOMAINS:
+    if state.entity_id.split(".", 1)[0] in _HOME_DOMAINS:  # recorder LazyState has no .domain
         return state.state == STATE_HOME
     return state.state in (STATE_ON, STATE_HOME)
 
