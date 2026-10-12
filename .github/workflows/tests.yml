@@ -8,19 +8,24 @@ jobs:
   python:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
       - run: pip install -r requirements_test.txt ruff
       - run: ruff check .
-      - run: pytest -q
+      - run: pytest -q 2>&1 | tee pytest.log; exit ${PIPESTATUS[0]}
+        shell: bash
+      - name: Failure summary as annotations
+        if: failure()
+        shell: bash
+        run: grep -E "Error|error|FAILED|assert" pytest.log | tail -25 | while IFS= read -r line; do echo "::error::$line"; done
 
   frontend:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 24
       - run: npm ci
