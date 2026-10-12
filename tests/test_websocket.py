@@ -92,3 +92,31 @@ async def test_add_and_remove(hass: HomeAssistant, hass_ws_client: WebSocketGene
     assert [e.data[CONF_CLIMATE_ENTITY] for e in hass.config_entries.async_entries(DOMAIN)] == [
         CLIMATE
     ]
+
+
+async def test_clearing_presence_removes_its_data(
+    hass: HomeAssistant, hass_ws_client: WebSocketGenerator
+) -> None:
+    entry = await _setup(hass)
+    hass.states.async_set("binary_sensor.desk", "on")
+    hass.config_entries.async_update_entry(entry, options={"presence_entities": ["binary_sensor.desk"]})
+    await hass.async_block_till_done()
+    registry = er.async_get(hass)
+    unique_id = f"{entry.entry_id}_occupancy"
+    assert registry.async_get_entity_id("binary_sensor", DOMAIN, unique_id)
+
+    client = await hass_ws_client(hass)
+    await client.send_json_auto_id(
+        {"type": f"{DOMAIN}/configure", "entity_id": CLIMATE, "presence_entities": []}
+    )
+    while "success" not in (message := await client.receive_json(timeout=5)):
+        pass
+    assert message["success"]
+    await hass.async_block_till_done()
+
+    assert registry.async_get_entity_id("binary_sensor", DOMAIN, unique_id) is None
+    await client.send_json_auto_id({"type": f"{DOMAIN}/get", "entity_id": CLIMATE})
+    info = (await client.receive_json())["result"]
+    assert info["occupancy_entity"] is None
+    assert info["profile"] is None
+    assert entry.entry_id not in entry.runtime_data._store._profiles

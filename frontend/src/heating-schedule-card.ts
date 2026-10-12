@@ -259,10 +259,15 @@ export class HeatingScheduleCard extends LitElement {
     this._unsub = undefined;
   }
 
+  /** Presence entities configured; without them no presence data is drawn. */
+  private get _presence(): boolean {
+    return !!this._info?.presence?.entities.length;
+  }
+
   private async _loadHistory(force = false): Promise<void> {
     if (!this.hass || !this._config) return;
     const entity = this._config.entity;
-    const occupancy = this._info?.occupancy_entity ?? null;
+    const occupancy = this._presence ? (this._info?.occupancy_entity ?? null) : null;
     const date = lastDateOf(this._day);
     const key = `${entity}|${occupancy}|${isoDate(date)}`;
     if (!force && key === this._historyKey) return;
@@ -465,13 +470,13 @@ export class HeatingScheduleCard extends LitElement {
         <span><i class="line schedule"></i>${t.legend_schedule}</span>
         <span><i class="line current"></i>${t.legend_current}</span>
         <span><i class="line target"></i>${t.legend_target}</span>
-        ${this._info?.profile?.weeks
+        ${this._presence && this._info?.profile?.weeks
           ? html`<span
               ><i class="swatch typical"></i>${t.legend_typical} (${this._info.profile.weeks}
               ${t.weeks})</span
             >`
           : nothing}
-        ${this._info?.occupancy_entity
+        ${this._presence && this._info?.occupancy_entity
           ? html`<span><i class="swatch actual"></i>${t.legend_presence}</span>`
           : nothing}
         ${showHistoryDate ? html`<span class="muted">${t.history_from} ${isoDate(history!.date)}</span>` : nothing}
@@ -621,7 +626,7 @@ export class HeatingScheduleCard extends LitElement {
 
   /** Background shading: typical occupancy of the selected weekday. */
   private _renderProfile(x: (m: number) => number, plotW: number, H: number) {
-    const profile = this._info?.profile;
+    const profile = this._presence ? this._info?.profile : undefined;
     if (!profile?.weeks) return nothing;
     const slots = profile.days[this._day] ?? [];
     const width = plotW / slots.length;

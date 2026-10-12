@@ -45,6 +45,10 @@ class ScheduleStore:
         self._profiles[entry_id] = profile
         self._profile_store.async_delay_save(self._profiles_to_save, PROFILE_SAVE_DELAY)
 
+    def remove_profile(self, entry_id: str) -> None:
+        if self._profiles.pop(entry_id, None) is not None:
+            self._profile_store.async_delay_save(self._profiles_to_save, SAVE_DELAY)
+
     def remove(self, entry_id: str) -> None:
         if self._data.pop(entry_id, None) is not None:
             self._store.async_delay_save(self._data_to_save, SAVE_DELAY)

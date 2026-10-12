@@ -109,6 +109,8 @@ class ScheduleController:
             else None
         )
         self.profile = self._load_profile() if self.presence_entities else None
+        if not self.presence_entities:
+            self._store.remove_profile(self.entry.entry_id)  # presence removed: drop its data
 
     # -- data ---------------------------------------------------------------
 
@@ -183,8 +185,12 @@ class ScheduleController:
             "sensor_entity": registry.async_get_entity_id(
                 "sensor", DOMAIN, f"{self.entry.entry_id}_scheduled_temperature"
             ),
-            "occupancy_entity": registry.async_get_entity_id(
-                "binary_sensor", DOMAIN, f"{self.entry.entry_id}_occupancy"
+            "occupancy_entity": (
+                registry.async_get_entity_id(
+                    "binary_sensor", DOMAIN, f"{self.entry.entry_id}_occupancy"
+                )
+                if self.room
+                else None
             ),
         }
 
