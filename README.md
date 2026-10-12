@@ -55,3 +55,58 @@ runs in Polish) with the card of every configured thermostat. Everything is conf
 Adding, renaming and changing presence apply immediately (the entry reloads); no restart is needed.
 These actions need an admin user. The same settings are also available under Settings → Devices &
 services → Heating Schedule.
+
+## Entities
+
+Attached to the thermostat's device:
+
+| Entity | Meaning |
+|---|---|
+| `switch.<thermostat>_schedule` | schedule on/off |
+| `sensor.<thermostat>_scheduled_temperature` | target temperature the schedule asks for now; attributes `next_change`, `next_temperature`, `effective_temperature`, `reason` |
+| `binary_sensor.<thermostat>_occupancy` | only with room presence entities, see above |
+
+## Card
+
+```yaml
+type: custom:heating-schedule-card
+entity: climate.bedroom_thermostat
+# name: Bedroom         # optional (default: the name set in the panel)
+# height: 220           # optional, px
+```
+
+- Day tabs (Mon…Sun). The chart shows the schedule (step line), and for the most recent
+  occurrence of that day the measured temperature and the actual target from history,
+  plus a "now" marker on today.
+- **Edit**: drag a level up/down (snaps to the thermostat step), drag a boundary sideways
+  (snaps to 15 min; drag it onto a neighbour to remove a segment), double-click a level to split it,
+  tap a level for −/+, ‹/› and split/remove buttons. *Copy day to…* copies the day to other days.
+  Changes are applied on *Save*.
+
+## Services
+
+- `heating_schedule.set_schedule` — `entity_id` (climate), optional `schedule` (all seven days) and `enabled`.
+- `heating_schedule.import_scheduler` — create schedules from
+  [Scheduler component](https://github.com/nielsfaber/scheduler-component) switches that call
+  `climate.set_temperature`. Default: all `switch.schedule_*`. Returns what was imported.
+  Disable or remove the Scheduler schedules afterwards so the two do not compete.
+  The service exists once the integration is loaded, i.e. after the first thermostat has been added.
+
+## Websocket API
+
+`heating_schedule/list`, `heating_schedule/get`, `heating_schedule/save` (`entity_id`, `days?`, `enabled?`),
+`heating_schedule/subscribe` (`entity_id`; sends the schedule now and after every change).
+Admin only: `heating_schedule/add` (`entity_id`), `heating_schedule/configure` (`entity_id`, `title?`,
+`presence_entities?`, `empty_setback?`, `empty_delay?`), `heating_schedule/remove` (`entity_id`).
+
+## Development
+
+```sh
+npm ci
+npm run build          # -> custom_components/heating_schedule/frontend/heating-schedule-card.js (committed)
+npm test               # card model tests
+node frontend/dev/screenshot.mjs out.png "dark" 380   # render frontend/dev/index.html with a mock hass (Edge)
+pip install -r requirements_test.txt && pytest       # Linux/macOS; HA does not build on Windows
+```
+
+Release: bump `version` in `manifest.json` and `package.json`, commit, push tag `vX.Y.Z`.
