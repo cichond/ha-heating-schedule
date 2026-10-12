@@ -268,6 +268,7 @@ export class HeatingSchedulePanel extends LitElement {
         @keydown=${(ev: KeyboardEvent) => ev.key === "Escape" && this._close()}
       >
         <h2>${title}</h2>
+        ${dialog.kind === "settings" ? this._renderClimate(dialog.info.climate_entity) : nothing}
         ${dialog.kind === "settings" ? html`<p class="help">${t.presence_help}</p>` : nothing}
         <ha-form
           .hass=${this.hass}
@@ -294,6 +295,15 @@ export class HeatingSchedulePanel extends LitElement {
         </div>
       </div>
     `;
+  }
+
+  /** Read-only: which thermostat this schedule drives. */
+  private _renderClimate(entity: string) {
+    const name = this.hass?.states[entity]?.attributes.friendly_name;
+    return html`<div class="climate">
+      <span class="label">${this._t.field_entity}</span>
+      <span>${name ? html`${name} <code>${entity}</code>` : html`<code>${entity}</code>`}</span>
+    </div>`;
   }
 
   static styles = css`
@@ -394,6 +404,24 @@ export class HeatingSchedulePanel extends LitElement {
       background: var(--card-background-color, #fff);
       color: var(--primary-text-color);
       box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+    }
+    .climate {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 4px 8px;
+      margin: 0 0 12px;
+      padding: 8px 12px;
+      border-radius: 8px;
+      background: var(--secondary-background-color, rgba(127, 127, 127, 0.12));
+    }
+    .climate .label {
+      color: var(--secondary-text-color);
+      font-size: 0.9em;
+    }
+    code {
+      font-size: 0.85em;
+      color: var(--secondary-text-color);
     }
     h2 {
       margin: 0 0 8px;

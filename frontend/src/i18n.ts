@@ -39,11 +39,11 @@ const STRINGS = {
     add_apply: "Add",
     field_entity: "Thermostat",
     field_title: "Name",
-    field_presence_entities: "Room presence entities",
+    field_presence_entities: "Room presence entities (any of them)",
     field_empty_setback: "Empty room setback",
     field_empty_delay: "Empty room after",
     presence_help:
-      "The room is occupied when any presence entity is on (person / device tracker: home). These entities also build the typical-presence profile. Unknown or unavailable never counts as empty. Setback 0 = off.",
+      "The room is occupied when any presence entity is on (OR) (person / device tracker: home). These entities also build the typical-presence profile. Unknown or unavailable never counts as empty. Setback 0 = off.",
     remove_schedule: "Remove schedule",
     remove_confirm: "Remove the schedule of {name}? Its schedule, switch and sensors will be deleted.",
     not_found:
@@ -89,11 +89,11 @@ const STRINGS = {
     add_apply: "Dodaj",
     field_entity: "Termostat",
     field_title: "Nazwa",
-    field_presence_entities: "Encje obecności w pokoju",
+    field_presence_entities: "Encje obecności w pokoju (wystarczy dowolna)",
     field_empty_setback: "Obniżka w pustym pokoju",
     field_empty_delay: "Pusty pokój po",
     presence_help:
-      "Pokój jest zajęty, gdy którakolwiek encja obecności jest włączona (osoba / urządzenie: w domu). Z tych encji powstaje też profil typowej obecności. Stan nieznany lub niedostępny nigdy nie oznacza pustego pokoju. Obniżka 0 = wyłączona.",
+      "Pokój jest zajęty, gdy którakolwiek encja obecności jest włączona (LUB) (osoba / urządzenie: w domu). Z tych encji powstaje też profil typowej obecności. Stan nieznany lub niedostępny nigdy nie oznacza pustego pokoju. Obniżka 0 = wyłączona.",
     remove_schedule: "Usuń harmonogram",
     remove_confirm: "Usunąć harmonogram termostatu {name}? Harmonogram, przełącznik i sensory zostaną usunięte.",
     not_found:
