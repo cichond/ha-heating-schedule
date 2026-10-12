@@ -17,7 +17,7 @@ thermostat → *Configure*):
 
 | Option | Meaning |
 |---|---|
-| Room presence entities | Any number of `binary_sensor` / `person` / `device_tracker` / `input_boolean` / `switch`. The room is occupied when **any** of them is `on` (person/device tracker: `home`). |
+| Room presence entities | Any number of `binary_sensor` / `person` / `device_tracker` / `input_boolean` / `switch` / `light`. The room is occupied when **any** of them is `on` (person/device tracker: `home`). |
 | Empty room setback, delay | Lower the target by this many degrees after the room has been empty for the delay. `0` = off. Useful with fast heating; slow floor heating cannot follow it. |
 
 Unknown or unavailable states never count as absence. The effective target is always the schedule,

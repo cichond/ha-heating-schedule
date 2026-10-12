@@ -117,3 +117,12 @@ async def test_options_flow_reloads(hass: HomeAssistant, freezer: FrozenDateTime
     assert result["type"] == "create_entry"
     assert entry.options["presence_entities"] == ["binary_sensor.desk"]
     assert hass.states.get("binary_sensor.office_occupancy").state == "on"
+
+
+def test_light_counts_as_presence() -> None:
+    from homeassistant.core import State
+
+    from custom_components.heating_schedule.presence import entity_present
+
+    assert entity_present(State("light.desk", "on")) is True
+    assert entity_present(State("light.desk", "off")) is False

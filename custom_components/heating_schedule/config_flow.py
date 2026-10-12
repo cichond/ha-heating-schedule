@@ -25,7 +25,7 @@ from .const import (
     DOMAIN,
 )
 
-PRESENCE_DOMAINS = ["binary_sensor", "person", "device_tracker", "input_boolean", "switch"]
+PRESENCE_DOMAINS = ["binary_sensor", "person", "device_tracker", "input_boolean", "switch", "light"]
 
 
 def _minutes() -> NumberSelector:

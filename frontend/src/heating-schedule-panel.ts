@@ -26,7 +26,7 @@ function loadSmooth(): boolean {
   }
 }
 
-const PRESENCE_DOMAINS = ["binary_sensor", "person", "device_tracker", "input_boolean", "switch"];
+const PRESENCE_DOMAINS = ["binary_sensor", "person", "device_tracker", "input_boolean", "switch", "light"];
 
 /**
  * ``ha-form`` and its selectors are lazy-loaded by the HA frontend. Opening a
