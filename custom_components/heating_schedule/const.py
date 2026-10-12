@@ -14,6 +14,12 @@ CARD_FILENAME = "heating-schedule-card.js"
 PANEL_URL = "heating-schedule"
 PANEL_ICON = "mdi:radiator"
 
+
+def signal_updated(climate_entity: str) -> str:
+    """Dispatcher signal sent when the schedule of ``climate_entity`` changes."""
+    return f"{DOMAIN}_updated_{climate_entity}"
+
+
 DEFAULT_TEMPERATURE = 20.0
 DEFAULT_STEP = 0.5
 

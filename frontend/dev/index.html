@@ -24,6 +24,12 @@
     set checked(v) { this._c = v; this.textContent = v ? "●" : "○"; } get checked() { return this._c; }
     connectedCallback() { this.style.cursor = "pointer"; this.onclick = () => { this.checked = !this.checked; this.dispatchEvent(new Event("change")); }; }
   });
+  // Crude ha-form stand-in: one labelled text box per schema field.
+  customElements.define("ha-form", class extends HTMLElement {
+    set schema(v) { this._s = v; this._r(); } set data(v) { this._d = v; this._r(); }
+    _r() { if (!this._s || !this._d) return; this.innerHTML = this._s.map(f =>
+      `<label style="display:block;margin:8px 0">${this.computeLabel?.(f) ?? f.name}<br><input style="width:100%" value="${[].concat(this._d[f.name] ?? "").join(", ")}"></label>`).join(""); }
+  });
   const params = new URLSearchParams(location.search);
   if (params.has("dark")) document.body.classList.add("dark");
   await import("../../custom_components/heating_schedule/frontend/heating-schedule-card.js");
@@ -31,12 +37,12 @@
   const workday = [{time:"00:00",temp:19},{time:"05:30",temp:21},{time:"08:30",temp:19},{time:"19:00",temp:21},{time:"22:00",temp:19}];
   const weekend = [{time:"00:00",temp:19},{time:"06:30",temp:21},{time:"10:00",temp:19},{time:"19:00",temp:21},{time:"22:30",temp:19}];
   const days = {mon:workday,tue:workday,wed:workday,thu:workday,fri:workday,sat:weekend,sun:weekend};
-  let info = { entry_id: "x", climate_entity: "climate.sypialnia_termostat", enabled: true, days,
+  let info = { entry_id: "x", title: "Sypialnia", climate_entity: "climate.sypialnia_termostat", enabled: true, days,
     current: { temp: 19, next_change: new Date(new Date().setHours(19,0,0,0)).toISOString(), next_temp: 21 },
     limits: { min: 5, max: 45, step: 1 }, switch_entity: "switch.sypialnia_termostat_harmonogram", sensor_entity: null,
     occupancy_entity: "binary_sensor.sypialnia_termostat_obecnosc",
     effective: params.has("empty") ? { temp: 17, reason: "empty" } : { temp: 19, reason: "schedule" },
-    presence: { entities: ["binary_sensor.a"], occupied: !params.has("empty"), empty: params.has("empty"), setback: 2 },
+    presence: { entities: ["binary_sensor.a"], occupied: !params.has("empty"), empty: params.has("empty"), setback: 2, delay: 30 },
     profile: { weeks: 2, days: Object.fromEntries(["mon","tue","wed","thu","fri","sat","sun"].map(d => [d,
       Array.from({ length: 96 }, (_, i) => (i >= 22 && i < 34) || (i >= 76 && i < 92) ? 0.6 + 0.4 * Math.sin(i) ** 2 : (i >= 92 || i < 22) ? 0.9 : 0.05)])) } };
   const subs = [];
@@ -52,7 +58,7 @@
     return rows;
   }
   const hass = {
-    language: "pl", locale: { language: "pl" },
+    language: "pl", locale: { language: "pl" }, user: { is_admin: true },
     states: { "climate.sypialnia_termostat": { entity_id: "climate.sypialnia_termostat", state: params.get("mode") ?? "heat",
       attributes: { friendly_name: "Sypialnia Termostat", current_temperature: 19.6, temperature: 19 } },
       "climate.biuro_termostat": { entity_id: "climate.biuro_termostat", state: "off",

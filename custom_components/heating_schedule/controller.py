@@ -35,6 +35,7 @@ from homeassistant.core import (
 )
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import (
     async_call_later,
     async_track_point_in_time,
@@ -56,6 +57,7 @@ from .const import (
     PROFILE_BACKFILL_DAYS,
     REASON_EMPTY,
     REASON_SCHEDULE,
+    signal_updated,
 )
 from .presence import AbsenceTracker, entity_present
 from .profile import DAY_NAMES, Profile, floor_slot, occupancy_slots
@@ -94,12 +96,13 @@ class ScheduleController:
         options = entry.options
         self.presence_entities: list[str] = list(options.get(CONF_PRESENCE_ENTITIES, []))
         self.empty_setback: float = float(options.get(CONF_EMPTY_SETBACK, DEFAULT_EMPTY_SETBACK))
+        self.empty_delay: int = int(options.get(CONF_EMPTY_DELAY, DEFAULT_EMPTY_DELAY))
 
         self.room = (
             AbsenceTracker(
                 hass,
                 self.presence_entities,
-                timedelta(minutes=options.get(CONF_EMPTY_DELAY, DEFAULT_EMPTY_DELAY)),
+                timedelta(minutes=self.empty_delay),
                 self._presence_changed,
             )
             if self.presence_entities
@@ -148,6 +151,7 @@ class ScheduleController:
         temp, reason = self.effective()
         return {
             "entry_id": self.entry.entry_id,
+            "title": self.entry.title,
             "climate_entity": self.climate_entity,
             "enabled": self.enabled,
             "days": self.days,
@@ -162,6 +166,7 @@ class ScheduleController:
                 "occupied": self.room.present if self.room else None,
                 "empty": bool(self.room and self.room.absent),
                 "setback": self.empty_setback,
+                "delay": self.empty_delay,
             },
             "profile": (
                 {
@@ -220,6 +225,7 @@ class ScheduleController:
     def _notify(self) -> None:
         for listener in list(self._listeners):
             listener()
+        async_dispatcher_send(self.hass, signal_updated(self.climate_entity))
 
     # -- engine -------------------------------------------------------------
 
@@ -385,6 +391,15 @@ class ScheduleController:
 
 def _available(state: State | None) -> bool:
     return state is not None and state.state not in (STATE_UNAVAILABLE, STATE_UNKNOWN)
+
+
+@callback
+def async_find_entry(hass: HomeAssistant, climate_entity: str) -> ConfigEntry | None:
+    """Config entry (loaded or not) for ``climate_entity``."""
+    for entry in hass.config_entries.async_entries(DOMAIN):
+        if entry.data.get(CONF_CLIMATE_ENTITY) == climate_entity:
+            return entry
+    return None
 
 
 @callback

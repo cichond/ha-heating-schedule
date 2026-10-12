@@ -37,6 +37,7 @@ export interface Hass {
   states: Record<string, HassEntity>;
   language: string;
   locale?: { language: string };
+  user?: { is_admin: boolean };
   connection: {
     subscribeMessage<T>(
       callback: (msg: T) => void,
@@ -51,10 +52,13 @@ interface CardConfig {
   entity: string;
   name?: string;
   height?: number;
+  /** Show a settings button that fires ``heating-schedule-settings`` (used by the panel). */
+  settings?: boolean;
 }
 
-interface ScheduleInfo {
+export interface ScheduleInfo {
   entry_id: string;
+  title: string;
   climate_entity: string;
   enabled: boolean;
   days: Week;
@@ -65,6 +69,7 @@ interface ScheduleInfo {
     occupied: boolean | null;
     empty: boolean;
     setback: number;
+    delay: number;
   };
   profile: { days: Record<Day, number[]>; weeks: number } | null;
   limits: { min: number | null; max: number | null; step: number };
@@ -349,27 +354,53 @@ export class HeatingScheduleCard extends LitElement {
     if (!this._config) return nothing;
     const t = this._t;
     const climate = this.hass?.states[this._config.entity];
-    const name = this._config.name ?? climate?.attributes.friendly_name ?? this._config.entity;
+    const name =
+      this._config.name ??
+      this._info?.title ??
+      climate?.attributes.friendly_name ??
+      this._config.entity;
     return html`
       <ha-card>
         <div class="header">
           <div class="name">${name}</div>
-          ${this._info
-            ? html`<label class="toggle">
-                <span>${t.schedule}</span>
-                <ha-switch
-                  .checked=${this._info.enabled}
-                  .disabled=${!!this._draft}
-                  @change=${this._toggleEnabled}
-                ></ha-switch>
-              </label>`
-            : nothing}
+          <div class="header-end">
+            ${this._info
+              ? html`<label class="toggle">
+                  <span>${t.schedule}</span>
+                  <ha-switch
+                    .checked=${this._info.enabled}
+                    .disabled=${!!this._draft}
+                    @change=${this._toggleEnabled}
+                  ></ha-switch>
+                </label>`
+              : nothing}
+            ${this._config.settings && this._info && this.hass?.user?.is_admin !== false
+              ? html`<button
+                  class="settings"
+                  title=${t.panel_settings}
+                  aria-label=${t.panel_settings}
+                  @click=${this._openSettings}
+                >
+                  <ha-icon icon="mdi:cog"></ha-icon>
+                </button>`
+              : nothing}
+          </div>
         </div>
         ${this._renderStatus(climate)}
         ${this._error ? html`<div class="error">${this._error}</div>` : nothing}
         ${this._info ? this._renderBody() : nothing}
       </ha-card>
     `;
+  }
+
+  private _openSettings(): void {
+    this.dispatchEvent(
+      new CustomEvent("heating-schedule-settings", {
+        detail: { info: this._info },
+        bubbles: true,
+        composed: true,
+      }),
+    );
   }
 
   private _renderStatus(climate?: HassEntity) {
@@ -890,6 +921,19 @@ export class HeatingScheduleCard extends LitElement {
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+    }
+    .header-end {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      flex-shrink: 0;
+    }
+    button.settings {
+      display: inline-flex;
+      padding: 6px;
+      background: none;
+      color: var(--secondary-text-color);
+      --mdc-icon-size: 20px;
     }
     .toggle {
       display: flex;
