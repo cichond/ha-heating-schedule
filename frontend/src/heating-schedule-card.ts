@@ -38,6 +38,11 @@ export interface Hass {
   language: string;
   locale?: { language: string };
   user?: { is_admin: boolean };
+  /** Registries (HA 2024.4+), used by the panel to group cards by floor. */
+  entities?: Record<string, { area_id?: string | null; device_id?: string | null }>;
+  devices?: Record<string, { area_id?: string | null }>;
+  areas?: Record<string, { area_id: string; name: string; floor_id?: string | null }>;
+  floors?: Record<string, { floor_id: string; name: string; level?: number | null }>;
   connection: {
     subscribeMessage<T>(
       callback: (msg: T) => void,

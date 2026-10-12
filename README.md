@@ -47,7 +47,8 @@ The card is served by the integration and loaded automatically; no dashboard res
 ## Sidebar panel
 
 The integration adds a **Heating** sidebar panel (`/heating-schedule`, "Ogrzewanie" when Home Assistant
-runs in Polish) with the card of every configured thermostat. Everything is configured there:
+runs in Polish) with the card of every configured thermostat, grouped by the floor of its area (floors by
+level, then rooms by name; thermostats without a floor last). Everything is configured there:
 
 - **+** in the header adds a thermostat,
 - the cog on a card renames it, sets its presence entities and empty-room setback, or removes its schedule.

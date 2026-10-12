@@ -10,6 +10,12 @@ interface Entry {
   climate_entity: string;
 }
 
+interface Group {
+  key: string;
+  name?: string;
+  entries: Entry[];
+}
+
 type Card = HTMLElement & { hass?: Hass; setConfig(config: Record<string, unknown>): void };
 
 type Dialog =
@@ -96,6 +102,59 @@ export class HeatingSchedulePanel extends LitElement {
     } finally {
       this._loading = false;
     }
+  }
+
+  /** Entries grouped by the floor of the thermostat's area (entity area, else device area). */
+  private _groups(entries: Entry[]): Group[] {
+    const hass = this.hass;
+    const areaOf = (entry: Entry) => {
+      const ent = hass?.entities?.[entry.climate_entity];
+      const areaId = ent?.area_id ?? (ent?.device_id ? hass?.devices?.[ent.device_id]?.area_id : undefined);
+      return areaId ? hass?.areas?.[areaId] : undefined;
+    };
+    const groups = new Map<string, Group & { level: number; sort: Map<Entry, string> }>();
+    for (const entry of entries) {
+      const area = areaOf(entry);
+      const floor = area?.floor_id ? hass?.floors?.[area.floor_id] : undefined;
+      const key = floor?.floor_id ?? "";
+      let group = groups.get(key);
+      if (!group) {
+        group = {
+          key,
+          name: floor?.name,
+          entries: [],
+          level: floor ? (floor.level ?? 0) : Number.POSITIVE_INFINITY,
+          sort: new Map(),
+        };
+        groups.set(key, group);
+      }
+      group.entries.push(entry);
+      group.sort.set(entry, area?.name ?? "");
+    }
+    const list = [...groups.values()].sort(
+      (a, b) => a.level - b.level || (a.name ?? "").localeCompare(b.name ?? ""),
+    );
+    // by room (rooms without an area last), then by title
+    const byRoom = (sort: Map<Entry, string>) => (a: Entry, b: Entry) => {
+      const ra = sort.get(a)!;
+      const rb = sort.get(b)!;
+      return Number(!ra) - Number(!rb) || ra.localeCompare(rb) || a.title.localeCompare(b.title);
+    };
+    for (const g of list) g.entries.sort(byRoom(g.sort));
+    return list;
+  }
+
+  private _renderCards(entries: Entry[]) {
+    const groups = this._groups(entries);
+    if (groups.length === 1 && !groups[0].name) {
+      return html`<div class="cards">${entries.map((entry) => this._card(entry))}</div>`;
+    }
+    return groups.map(
+      (g) => html`<section>
+        <h2 class="floor">${g.name ?? this._t.panel_no_floor}</h2>
+        <div class="cards">${g.entries.map((entry) => this._card(entry))}</div>
+      </section>`,
+    );
   }
 
   private _card(entry: Entry): Card {
@@ -247,7 +306,7 @@ export class HeatingSchedulePanel extends LitElement {
       <div class="content">
         ${this._error ? html`<div class="error">${this._error}</div>` : nothing}
         ${entries && !entries.length ? html`<p class="empty">${t.panel_empty}</p>` : nothing}
-        <div class="cards">${(entries ?? []).map((entry) => this._card(entry))}</div>
+        ${this._renderCards(entries ?? [])}
       </div>
       ${this._renderDialog()}
     `;
@@ -364,6 +423,15 @@ export class HeatingSchedulePanel extends LitElement {
       max-width: 1600px;
       margin: 0 auto;
       box-sizing: border-box;
+    }
+    .floor {
+      margin: 8px 4px 12px;
+      font-size: 1.3em;
+      font-weight: 400;
+      color: var(--primary-text-color);
+    }
+    section + section .floor {
+      margin-top: 24px;
     }
     .cards {
       display: grid;
