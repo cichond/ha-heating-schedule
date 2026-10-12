@@ -1,1 +1,3 @@
 pytest-homeassistant-custom-component
+# frontend component is a dependency of the integration
+home-assistant-frontend
