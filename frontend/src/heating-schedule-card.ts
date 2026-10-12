@@ -33,7 +33,7 @@ interface HassEntity {
   attributes: Record<string, any>;
 }
 
-interface Hass {
+export interface Hass {
   states: Record<string, HassEntity>;
   language: string;
   locale?: { language: string };
@@ -59,15 +59,12 @@ interface ScheduleInfo {
   enabled: boolean;
   days: Week;
   current: { temp: number | null; next_change: string | null; next_temp: number | null };
-  effective: { temp: number | null; reason: "schedule" | "empty" | "away" };
+  effective: { temp: number | null; reason: "schedule" | "empty" };
   presence: {
     entities: string[];
     occupied: boolean | null;
     empty: boolean;
     setback: number;
-    away_entities: string[];
-    away: boolean;
-    away_temperature: number | null;
   };
   profile: { days: Record<Day, number[]>; weeks: number } | null;
   limits: { min: number | null; max: number | null; step: number };
@@ -419,10 +416,7 @@ export class HeatingScheduleCard extends LitElement {
     if (!info?.enabled || info.effective.reason === "schedule") return nothing;
     const t = this._t;
     const temp = this._fmtTemp(info.effective.temp);
-    const text =
-      info.effective.reason === "away"
-        ? `${t.override_away} ${temp}`
-        : `${t.override_empty} ${temp} (−${this._fmtTemp(info.presence.setback)})`;
+    const text = `${t.override_empty} ${temp} (−${this._fmtTemp(info.presence.setback)})`;
     return html`<div class="override">${text}</div>`;
   }
 

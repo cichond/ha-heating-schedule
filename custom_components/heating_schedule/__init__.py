@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from homeassistant.components import panel_custom
 from homeassistant.components.frontend import add_extra_js_url
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
@@ -19,6 +20,8 @@ from .const import (
     DEFAULT_TEMPERATURE,
     DOMAIN,
     FRONTEND_URL_BASE,
+    PANEL_ICON,
+    PANEL_URL,
 )
 from .controller import ScheduleController
 from .schedule import default_schedule
@@ -47,7 +50,18 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
             )
         ]
     )
-    add_extra_js_url(hass, f"{FRONTEND_URL_BASE}/{CARD_FILENAME}?v={integration.version}")
+    module_url = f"{FRONTEND_URL_BASE}/{CARD_FILENAME}?v={integration.version}"
+    add_extra_js_url(hass, module_url)
+    # Sidebar panel with the cards of all thermostats (same module as the card).
+    await panel_custom.async_register_panel(
+        hass,
+        frontend_url_path=PANEL_URL,
+        webcomponent_name="heating-schedule-panel",
+        sidebar_title="Ogrzewanie" if hass.config.language.startswith("pl") else "Heating",
+        sidebar_icon=PANEL_ICON,
+        module_url=module_url,
+        require_admin=False,
+    )
 
     async_register_websocket(hass)
     async_register_services(hass)

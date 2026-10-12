@@ -45,20 +45,15 @@ from homeassistant.helpers.start import async_at_started
 from homeassistant.util import dt as dt_util
 
 from .const import (
-    CONF_AWAY_DELAY,
-    CONF_AWAY_ENTITIES,
-    CONF_AWAY_TEMPERATURE,
     CONF_CLIMATE_ENTITY,
     CONF_EMPTY_DELAY,
     CONF_EMPTY_SETBACK,
     CONF_PRESENCE_ENTITIES,
-    DEFAULT_AWAY_DELAY,
     DEFAULT_EMPTY_DELAY,
     DEFAULT_EMPTY_SETBACK,
     DEFAULT_STEP,
     DOMAIN,
     PROFILE_BACKFILL_DAYS,
-    REASON_AWAY,
     REASON_EMPTY,
     REASON_SCHEDULE,
 )
@@ -79,12 +74,9 @@ class ScheduleController:
     A manual change holds until the effective target changes again: the next
     schedule point, or presence lowering/restoring the temperature.
 
-    Optional presence handling (entry options):
-    - room presence entities: any of them present = room occupied. With a
-      setback configured, the target drops by it after the room has been
-      empty for the delay. The entities also feed the occupancy profile.
-    - away entities: when none of them has been present for the delay, the
-      target is capped at the away temperature.
+    Optional presence entities (entry options): any of them present = room
+    occupied. With a setback configured, the target drops by it after the room
+    has been empty for the delay. The entities also feed the occupancy profile.
     """
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry, store: ScheduleStore) -> None:
@@ -102,9 +94,6 @@ class ScheduleController:
         options = entry.options
         self.presence_entities: list[str] = list(options.get(CONF_PRESENCE_ENTITIES, []))
         self.empty_setback: float = float(options.get(CONF_EMPTY_SETBACK, DEFAULT_EMPTY_SETBACK))
-        self.away_entities: list[str] = list(options.get(CONF_AWAY_ENTITIES, []))
-        away_temp = options.get(CONF_AWAY_TEMPERATURE)
-        self.away_temperature: float | None = float(away_temp) if away_temp is not None else None
 
         self.room = (
             AbsenceTracker(
@@ -114,16 +103,6 @@ class ScheduleController:
                 self._presence_changed,
             )
             if self.presence_entities
-            else None
-        )
-        self.away = (
-            AbsenceTracker(
-                hass,
-                self.away_entities,
-                timedelta(minutes=options.get(CONF_AWAY_DELAY, DEFAULT_AWAY_DELAY)),
-                self._presence_changed,
-            )
-            if self.away_entities and self.away_temperature is not None
             else None
         )
         self.profile = self._load_profile() if self.presence_entities else None
@@ -158,8 +137,6 @@ class ScheduleController:
         if self.slot is None:
             return None, REASON_SCHEDULE
         temp = self.slot.temp
-        if self.away and self.away.absent and self.away_temperature < temp:
-            return self.away_temperature, REASON_AWAY
         if self.room and self.room.absent and self.empty_setback > 0:
             return round(temp - self.empty_setback, 2), REASON_EMPTY
         return temp, REASON_SCHEDULE
@@ -185,9 +162,6 @@ class ScheduleController:
                 "occupied": self.room.present if self.room else None,
                 "empty": bool(self.room and self.room.absent),
                 "setback": self.empty_setback,
-                "away_entities": self.away_entities,
-                "away": bool(self.away and self.away.absent),
-                "away_temperature": self.away_temperature,
             },
             "profile": (
                 {
@@ -250,9 +224,8 @@ class ScheduleController:
     # -- engine -------------------------------------------------------------
 
     async def async_start(self) -> None:
-        for tracker in (self.room, self.away):
-            if tracker:
-                self.entry.async_on_unload(tracker.async_start())
+        if self.room:
+            self.entry.async_on_unload(self.room.async_start())
         self._reschedule()
         self._effective_temp = self.effective()[0]
         self.entry.async_on_unload(

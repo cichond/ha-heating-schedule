@@ -42,6 +42,7 @@ async def setup(hass: HomeAssistant, freezer: FrozenDateTimeFactory):
 async def test_default_schedule_does_nothing(hass: HomeAssistant, setup) -> None:
     _entry, calls = setup
     assert calls == []
+    assert "heating-schedule" in hass.data["frontend_panels"]
     assert hass.states.get("sensor.office_scheduled_temperature").state == "18.0"
     assert hass.states.get("switch.office_schedule").state == "on"
 

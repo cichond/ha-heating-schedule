@@ -16,14 +16,10 @@ from homeassistant.helpers.selector import (
 import voluptuous as vol
 
 from .const import (
-    CONF_AWAY_DELAY,
-    CONF_AWAY_ENTITIES,
-    CONF_AWAY_TEMPERATURE,
     CONF_CLIMATE_ENTITY,
     CONF_EMPTY_DELAY,
     CONF_EMPTY_SETBACK,
     CONF_PRESENCE_ENTITIES,
-    DEFAULT_AWAY_DELAY,
     DEFAULT_EMPTY_DELAY,
     DEFAULT_EMPTY_SETBACK,
     DOMAIN,
@@ -77,7 +73,7 @@ class HeatingScheduleConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class HeatingScheduleOptionsFlow(OptionsFlow):
-    """Presence entities, empty-room setback and away temperature."""
+    """Presence entities and the empty-room setback."""
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         if user_input is not None:
@@ -102,24 +98,6 @@ class HeatingScheduleOptionsFlow(OptionsFlow):
                 ),
                 vol.Optional(
                     CONF_EMPTY_DELAY, default=options.get(CONF_EMPTY_DELAY, DEFAULT_EMPTY_DELAY)
-                ): _minutes(),
-                vol.Optional(
-                    CONF_AWAY_ENTITIES, default=options.get(CONF_AWAY_ENTITIES, [])
-                ): EntitySelector(EntitySelectorConfig(domain=PRESENCE_DOMAINS, multiple=True)),
-                vol.Optional(
-                    CONF_AWAY_TEMPERATURE,
-                    description={"suggested_value": options.get(CONF_AWAY_TEMPERATURE)},
-                ): NumberSelector(
-                    NumberSelectorConfig(
-                        min=5,
-                        max=30,
-                        step=0.5,
-                        unit_of_measurement="°C",
-                        mode=NumberSelectorMode.BOX,
-                    )
-                ),
-                vol.Optional(
-                    CONF_AWAY_DELAY, default=options.get(CONF_AWAY_DELAY, DEFAULT_AWAY_DELAY)
                 ): _minutes(),
             }
         )

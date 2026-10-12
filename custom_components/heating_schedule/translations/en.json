@@ -68,18 +68,14 @@
     "step": {
       "init": {
         "title": "Presence",
-        "description": "Presence entities: the room counts as occupied when any of them is on (person/device tracker: home). They feed the occupancy profile shown on the card. Away entities: the house counts as empty when none of them has been home for the delay. Unknown/unavailable states never count as absence.",
+        "description": "Presence entities: the room counts as occupied when any of them is on (person/device tracker: home). They feed the occupancy profile shown on the card. Unknown/unavailable states never count as absence.",
         "data": {
           "presence_entities": "Room presence entities",
           "empty_setback": "Empty room setback",
-          "empty_delay": "Empty room delay",
-          "away_entities": "Away entities (people)",
-          "away_temperature": "Away temperature",
-          "away_delay": "Away delay"
+          "empty_delay": "Empty room delay"
         },
         "data_description": {
-          "empty_setback": "Lower the target by this much when the room has been empty for the delay. 0 = off (worth it only with fast floor heating).",
-          "away_temperature": "Cap the target at this temperature while everyone is away. Empty = off."
+          "empty_setback": "Lower the target by this much when the room has been empty for the delay. 0 = off (worth it only with fast floor heating)."
         }
       }
     }
