@@ -23,7 +23,7 @@ def auto_enable_custom_integrations(recorder_mock, enable_custom_integrations):
 
 
 async def test_profile_from_history(
-    recorder_mock, hass: HomeAssistant, freezer: FrozenDateTimeFactory, hass_ws_client
+    recorder_mock, hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
     await hass.config.async_set_time_zone("Europe/Warsaw")
     start = dt_util.now().replace(hour=8, minute=0, second=0, microsecond=0)
@@ -56,9 +56,8 @@ async def test_profile_from_history(
     assert controller.profile.avg[day][slot : slot + 4] == [0.0, 1.0, 1.0, 0.0]
     assert controller.profile.last_sample == start + timedelta(hours=1)
 
-    client = await hass_ws_client(hass)
-    await client.send_json_auto_id({"type": f"{DOMAIN}/get", "entity_id": "climate.office"})
-    result = (await client.receive_json())["result"]
+    # payload sent to the card (a websocket client cannot authenticate with frozen time)
+    result = controller.as_dict()
     assert result["profile"]["weeks"] == 1
     assert result["presence"]["entities"] == ["binary_sensor.desk"]
     assert result["occupancy_entity"] == "binary_sensor.office_occupancy"
