@@ -44,7 +44,10 @@ async def test_configure_survives_reload(
             "empty_delay": 20,
         }
     )
-    assert (await client.receive_json())["success"]
+    events = []
+    while "success" not in (message := await client.receive_json(timeout=5)):
+        events.append(message["event"])  # updates may arrive before the result
+    assert message["success"]
     await hass.async_block_till_done()
 
     assert entry.title == "Biuro"
@@ -56,9 +59,10 @@ async def test_configure_survives_reload(
 
     # The subscription follows the reloaded controller.
     for _ in range(10):
-        event = (await client.receive_json(timeout=5))["event"]
-        if event["title"] == "Biuro":
+        if events and events[-1]["title"] == "Biuro":
             break
+        events.append((await client.receive_json(timeout=5))["event"])
+    event = events[-1]
     assert event["title"] == "Biuro"
     assert event["presence"]["entities"] == ["binary_sensor.desk"]
     assert event["presence"]["setback"] == 1.5
