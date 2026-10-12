@@ -59,9 +59,21 @@ interface ScheduleInfo {
   enabled: boolean;
   days: Week;
   current: { temp: number | null; next_change: string | null; next_temp: number | null };
+  effective: { temp: number | null; reason: "schedule" | "empty" | "away" };
+  presence: {
+    entities: string[];
+    occupied: boolean | null;
+    empty: boolean;
+    setback: number;
+    away_entities: string[];
+    away: boolean;
+    away_temperature: number | null;
+  };
+  profile: { days: Record<Day, number[]>; weeks: number } | null;
   limits: { min: number | null; max: number | null; step: number };
   switch_entity: string | null;
   sensor_entity: string | null;
+  occupancy_entity: string | null;
 }
 
 interface HistoryRow {
@@ -75,6 +87,7 @@ interface History {
   date: Date;
   current: [number, number][]; // [minute, value]
   target: [number, number][];
+  occupied: [number, number][]; // [start minute, end minute]
   end: number;
 }
 
@@ -205,7 +218,7 @@ export class HeatingScheduleCard extends LitElement {
 
   protected updated(changed: PropertyValues): void {
     if (this.hass && this._config && !this._unsub && !this._subscribeFailed) this._subscribe();
-    if (changed.has("_day") || changed.has("hass")) this._loadHistory();
+    if (changed.has("_day") || changed.has("hass") || changed.has("_info")) this._loadHistory();
     const chart = this.renderRoot.querySelector(".chart");
     if (chart && chart !== this._observed) {
       this._observed = chart;
@@ -242,8 +255,9 @@ export class HeatingScheduleCard extends LitElement {
   private async _loadHistory(force = false): Promise<void> {
     if (!this.hass || !this._config) return;
     const entity = this._config.entity;
+    const occupancy = this._info?.occupancy_entity ?? null;
     const date = lastDateOf(this._day);
-    const key = `${entity}|${isoDate(date)}`;
+    const key = `${entity}|${occupancy}|${isoDate(date)}`;
     if (!force && key === this._historyKey) return;
     this._historyKey = key;
 
@@ -255,7 +269,7 @@ export class HeatingScheduleCard extends LitElement {
         type: "history/history_during_period",
         start_time: date.toISOString(),
         end_time: end.toISOString(),
-        entity_ids: [entity],
+        entity_ids: occupancy ? [entity, occupancy] : [entity],
         minimal_response: false,
         no_attributes: false,
         significant_changes_only: false,
@@ -270,12 +284,18 @@ export class HeatingScheduleCard extends LitElement {
         if (typeof attrs.current_temperature === "number") current.push([m, attrs.current_temperature]);
         if (typeof attrs.temperature === "number") target.push([m, attrs.temperature]);
       }
-      this._history = {
-        date,
-        current,
-        target,
-        end: end === now ? minuteOfDay(now) : DAY_MIN,
-      };
+      const endMinute = end === now ? minuteOfDay(now) : DAY_MIN;
+      const toMinute = (row: HistoryRow) =>
+        clamp(((row.lu ?? row.lc ?? 0) * 1000 - date.getTime()) / 60000, 0, DAY_MIN);
+      const occupied: [number, number][] = [];
+      const rows = occupancy ? (result[occupancy] ?? []) : [];
+      rows.forEach((row, i) => {
+        if (row.s !== "on") return;
+        const from = toMinute(row);
+        const to = i + 1 < rows.length ? toMinute(rows[i + 1]) : endMinute;
+        if (to > from) occupied.push([from, to]);
+      });
+      this._history = { date, current, target, occupied, end: endMinute };
     } catch (err) {
       this._history = undefined;
     }
@@ -373,10 +393,37 @@ export class HeatingScheduleCard extends LitElement {
         <span class="current">${this._fmtTemp(attrs.current_temperature)}</span>
         <span class="target">${t.target} ${this._fmtTemp(attrs.temperature)}</span>
         <span class="mode ${climate.state}">${mode}</span>
+        ${this._renderPresenceChip()}
         ${next}
       </div>
+      ${this._renderOverride()}
       ${info?.enabled && climate.state === "off" ? html`<div class="hint">${t.off_hint}</div>` : nothing}
     `;
+  }
+
+  private _renderPresenceChip() {
+    const presence = this._info?.presence;
+    if (!presence?.entities.length) return nothing;
+    const t = this._t;
+    const label =
+      presence.occupied === null
+        ? t.presence_unknown
+        : presence.occupied
+          ? t.presence_yes
+          : t.presence_no;
+    return html`<span class="mode presence ${presence.occupied ? "on" : ""}">${label}</span>`;
+  }
+
+  private _renderOverride() {
+    const info = this._info;
+    if (!info?.enabled || info.effective.reason === "schedule") return nothing;
+    const t = this._t;
+    const temp = this._fmtTemp(info.effective.temp);
+    const text =
+      info.effective.reason === "away"
+        ? `${t.override_away} ${temp}`
+        : `${t.override_empty} ${temp} (−${this._fmtTemp(info.presence.setback)})`;
+    return html`<div class="override">${text}</div>`;
   }
 
   private _renderBody() {
@@ -401,6 +448,15 @@ export class HeatingScheduleCard extends LitElement {
         <span><i class="line schedule"></i>${t.legend_schedule}</span>
         <span><i class="line current"></i>${t.legend_current}</span>
         <span><i class="line target"></i>${t.legend_target}</span>
+        ${this._info?.profile?.weeks
+          ? html`<span
+              ><i class="swatch typical"></i>${t.legend_typical} (${this._info.profile.weeks}
+              ${t.weeks})</span
+            >`
+          : nothing}
+        ${this._info?.occupancy_entity
+          ? html`<span><i class="swatch actual"></i>${t.legend_presence}</span>`
+          : nothing}
         ${showHistoryDate ? html`<span class="muted">${t.history_from} ${isoDate(history!.date)}</span>` : nothing}
       </div>
       ${this._draft ? this._renderEditor() : this._renderSummary()}
@@ -477,6 +533,7 @@ export class HeatingScheduleCard extends LitElement {
           <stop offset="1" class="fill-bottom"></stop>
         </linearGradient>
       </defs>
+      ${this._renderProfile(x, plotW, H)}
       ${yTicks.map(
         (v) => svg`<line class="grid" x1=${PAD.l} x2=${W - PAD.r} y1=${y(v)} y2=${y(v)}></line>
           <text class="axis" x=${PAD.l - 4} y=${y(v) + 3.5} text-anchor="end">${v}°</text>`,
@@ -486,6 +543,12 @@ export class HeatingScheduleCard extends LitElement {
           <text class="axis" x=${x(h * 60)} y=${H - 5} text-anchor=${h === 0 ? "start" : h === 24 ? "end" : "middle"}>${h}</text>`,
       )}
       <path class="area" d=${area}></path>
+      ${historyHere
+        ? history!.occupied.map(
+            ([from, to]) => svg`<rect class="presence-strip" x=${x(from)} y=${H - PAD.b - 5}
+              width=${Math.max(1, x(to) - x(from))} height="5"></rect>`,
+          )
+        : nothing}
       ${targetPath ? svg`<path class="target" d=${targetPath}></path>` : nothing}
       ${currentPath ? svg`<path class="current" d=${currentPath}></path>` : nothing}
       <path class="schedule" d=${line}></path>
@@ -536,6 +599,20 @@ export class HeatingScheduleCard extends LitElement {
       if (shown.every((q) => Math.abs(x(q.m) - x(p.m)) >= 34)) shown.push(p);
     }
     return shown;
+  }
+
+  /** Background shading: typical occupancy of the selected weekday. */
+  private _renderProfile(x: (m: number) => number, plotW: number, H: number) {
+    const profile = this._info?.profile;
+    if (!profile?.weeks) return nothing;
+    const slots = profile.days[this._day] ?? [];
+    const width = plotW / slots.length;
+    return slots.map((value, i) =>
+      value > 0.02
+        ? svg`<rect class="profile" x=${x(i * 15)} y=${PAD.t} width=${width + 0.5}
+            height=${H - PAD.t - PAD.b} fill-opacity=${Math.min(0.35, value * 0.35)}></rect>`
+        : nothing,
+    );
   }
 
   private _renderDragLabel(pts: Pt[], drag: Drag) {
@@ -801,6 +878,7 @@ export class HeatingScheduleCard extends LitElement {
       --hs-target: var(--secondary-text-color, #727272);
       --hs-now: var(--error-color, #db4437);
       --hs-grid: var(--divider-color, rgba(127, 127, 127, 0.2));
+      --hs-presence: var(--green-color, #4caf50);
     }
     ha-card {
       padding: 16px;
@@ -851,6 +929,36 @@ export class HeatingScheduleCard extends LitElement {
     .mode.heat {
       background: var(--hs-current);
       color: #fff;
+    }
+    .mode.presence.on {
+      background: var(--hs-presence);
+      color: #fff;
+    }
+    .override {
+      display: inline-block;
+      margin: 2px 0 4px;
+      padding: 2px 10px;
+      border-radius: 10px;
+      font-size: 0.85em;
+      background: var(--warning-color, #ffa600);
+      color: #fff;
+    }
+    .profile {
+      shape-rendering: crispEdges;
+    }
+    .profile,
+    .presence-strip {
+      fill: var(--hs-presence);
+    }
+    .swatch {
+      display: inline-block;
+      width: 12px;
+      height: 10px;
+      border-radius: 2px;
+      background: var(--hs-presence);
+    }
+    .swatch.typical {
+      opacity: 0.35;
     }
     .hint {
       color: var(--secondary-text-color);

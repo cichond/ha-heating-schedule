@@ -32,7 +32,13 @@
   const days = {mon:workday,tue:workday,wed:workday,thu:workday,fri:workday,sat:weekend,sun:weekend};
   let info = { entry_id: "x", climate_entity: "climate.sypialnia_termostat", enabled: true, days,
     current: { temp: 19, next_change: new Date(new Date().setHours(19,0,0,0)).toISOString(), next_temp: 21 },
-    limits: { min: 5, max: 45, step: 1 }, switch_entity: "switch.sypialnia_termostat_harmonogram", sensor_entity: null };
+    limits: { min: 5, max: 45, step: 1 }, switch_entity: "switch.sypialnia_termostat_harmonogram", sensor_entity: null,
+    occupancy_entity: "binary_sensor.sypialnia_termostat_obecnosc",
+    effective: params.has("empty") ? { temp: 17, reason: "empty" } : { temp: 19, reason: "schedule" },
+    presence: { entities: ["binary_sensor.a"], occupied: !params.has("empty"), empty: params.has("empty"), setback: 2,
+      away_entities: [], away: false, away_temperature: null },
+    profile: { weeks: 2, days: Object.fromEntries(["mon","tue","wed","thu","fri","sat","sun"].map(d => [d,
+      Array.from({ length: 96 }, (_, i) => (i >= 22 && i < 34) || (i >= 76 && i < 92) ? 0.6 + 0.4 * Math.sin(i) ** 2 : (i >= 92 || i < 22) ? 0.9 : 0.05)])) } };
   const subs = [];
   const midnight = new Date(); midnight.setHours(0,0,0,0);
   function history(start) {
@@ -51,7 +57,11 @@
       attributes: { friendly_name: "Sypialnia Termostat", current_temperature: 19.6, temperature: 19 } } },
     connection: { subscribeMessage: async (cb, msg) => { subs.push(cb); setTimeout(() => cb(info)); return async () => {}; } },
     callWS: async (msg) => {
-      if (msg.type === "history/history_during_period") return { [msg.entity_ids[0]]: history(msg.start_time) };
+      if (msg.type === "history/history_during_period") {
+        const t0 = new Date(msg.start_time).getTime() / 1000;
+        return { [msg.entity_ids[0]]: history(msg.start_time),
+          "binary_sensor.sypialnia_termostat_obecnosc": [{ s: "on", lu: t0 }, { s: "off", lu: t0 + 6.6 * 3600 }, { s: "on", lu: t0 + 7 * 3600 }, { s: "off", lu: t0 + 8.4 * 3600 }] };
+      }
       if (msg.type === "heating_schedule/save") { info = { ...info, ...(msg.days ? { days: msg.days } : {}), ...(msg.enabled !== undefined ? { enabled: msg.enabled } : {}) }; subs.forEach(cb => cb(info)); window.lastSave = msg; return info; }
       throw { code: "unknown", message: msg.type };
     },

@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from freezegun.api import FrozenDateTimeFactory
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
+import pytest
 from pytest_homeassistant_custom_component.common import (
     MockConfigEntry,
     async_fire_time_changed,
@@ -21,9 +22,14 @@ ATTRS = {"temperature": 21, "min_temp": 5, "max_temp": 30, "target_temp_step": 0
 WEEK = {day: [{"time": "00:00", "temp": 21}] for day in DAYS}
 
 
-async def _setup(hass: HomeAssistant, freezer: FrozenDateTimeFactory, options: dict):
+@pytest.fixture(autouse=True)
+async def frozen_morning(hass: HomeAssistant, freezer: FrozenDateTimeFactory) -> None:
+    """Freeze time before any state is set, so last_changed is not in the future."""
     await hass.config.async_set_time_zone("Europe/Warsaw")
     freezer.move_to(datetime(2026, 10, 12, 10, 0, tzinfo=dt_util.get_default_time_zone()))
+
+
+async def _setup(hass: HomeAssistant, freezer: FrozenDateTimeFactory, options: dict):
     hass.states.async_set(CLIMATE, "heat", ATTRS)
     calls = async_mock_service(hass, "climate", "set_temperature")
     entry = MockConfigEntry(

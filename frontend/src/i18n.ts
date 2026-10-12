@@ -25,6 +25,14 @@ const STRINGS = {
     all: "All",
     edit_hint:
       "Drag a level up or down, drag a boundary sideways. Double-click a level to split it. Tap a level for more options.",
+    presence_yes: "occupied",
+    presence_no: "empty",
+    presence_unknown: "presence ?",
+    override_away: "Everyone away →",
+    override_empty: "Room empty →",
+    legend_typical: "typical presence",
+    legend_presence: "presence that day",
+    weeks: "wk",
     not_found:
       "This thermostat has no schedule. Add it under Settings → Devices & services → Heating Schedule.",
   },
@@ -54,6 +62,14 @@ const STRINGS = {
     all: "Wszystkie",
     edit_hint:
       "Przeciągnij poziom w górę lub w dół, a granicę w bok. Dwuklik na poziomie dzieli go na dwa. Dotknij poziomu, żeby zobaczyć więcej opcji.",
+    presence_yes: "ktoś jest",
+    presence_no: "pusto",
+    presence_unknown: "obecność ?",
+    override_away: "Nikogo nie ma w domu →",
+    override_empty: "Pusty pokój →",
+    legend_typical: "typowa obecność",
+    legend_presence: "obecność tego dnia",
+    weeks: "tyg.",
     not_found:
       "Ten termostat nie ma harmonogramu. Dodaj go w Ustawienia → Urządzenia i usługi → Harmonogram ogrzewania.",
   },

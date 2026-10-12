@@ -10,6 +10,31 @@ that shows each schedule as a temperature-over-time chart and lets you edit it b
 - Temperatures are rounded to the thermostat's `target_temp_step` and clamped to `min_temp`/`max_temp`.
 - If the thermostat is unavailable at a change point, the schedule is applied when it comes back.
 
+## Presence (options)
+
+Settings → Devices & services → Heating Schedule → thermostat → *Configure*:
+
+| Option | Meaning |
+|---|---|
+| Room presence entities | Any number of `binary_sensor` / `person` / `device_tracker` / `input_boolean` / `switch`. The room is occupied when **any** of them is `on` (person/device tracker: `home`). |
+| Empty room setback, delay | Lower the target by this many degrees after the room has been empty for the delay. `0` = off. Useful with fast heating; slow floor heating cannot follow it. |
+| Away entities, temperature, delay | Usually the `person` entities. When **none** of them has been home for the delay, the target is capped at the away temperature. Empty temperature = off. |
+
+Unknown or unavailable states never count as absence. The effective target is always the schedule,
+possibly lowered by away/empty; a manual change holds until that target changes again.
+
+With room presence entities the integration also:
+
+- adds `binary_sensor.<thermostat>_occupancy` (combined presence; attribute `empty` once the delay passed),
+- builds an **occupancy profile**: the share of each 15-minute slot per weekday the room was occupied,
+  averaged over about the last eight weeks. It is filled from the recorder (backfilled up to 14 days
+  on first start, then hourly) and stored in `.storage/heating_schedule.profile`. Changing the presence
+  entities starts a new profile.
+
+The card shades the chart with the typical occupancy of the selected weekday and draws the actual
+presence of that day as a strip along the bottom. The scheduled-temperature sensor has the attributes
+`effective_temperature` and `reason` (`schedule`, `empty`, `away`).
+
 ## Installation (HACS)
 
 1. HACS → ⋮ → *Custom repositories* → `https://github.com/cichond/ha-heating-schedule`, category *Integration*.
@@ -26,7 +51,8 @@ Attached to the thermostat's device:
 | Entity | Meaning |
 |---|---|
 | `switch.<thermostat>_schedule` | schedule on/off |
-| `sensor.<thermostat>_scheduled_temperature` | target temperature the schedule asks for now; attributes `next_change`, `next_temperature` |
+| `sensor.<thermostat>_scheduled_temperature` | target temperature the schedule asks for now; attributes `next_change`, `next_temperature`, `effective_temperature`, `reason` |
+| `binary_sensor.<thermostat>_occupancy` | only with room presence entities, see above |
 
 ## Card
 

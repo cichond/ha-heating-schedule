@@ -7,12 +7,19 @@ from datetime import timedelta
 from freezegun.api import FrozenDateTimeFactory
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
+import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry, async_mock_service
 from pytest_homeassistant_custom_component.components.recorder.common import (
     async_wait_recording_done,
 )
 
 from custom_components.heating_schedule.const import CONF_CLIMATE_ENTITY, DOMAIN
+
+
+@pytest.fixture(autouse=True)
+def auto_enable_custom_integrations(recorder_mock, enable_custom_integrations):
+    """Override of the conftest fixture: the recorder must start before hass."""
+    return
 
 
 async def test_profile_from_history(
