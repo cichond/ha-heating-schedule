@@ -44,6 +44,7 @@ async def test_profile_from_history(
         domain=DOMAIN,
         data={CONF_CLIMATE_ENTITY: "climate.office"},
         options={"presence_entities": ["binary_sensor.desk"]},
+        title="Office",
     )
     entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(entry.entry_id)
