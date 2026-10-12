@@ -8,7 +8,11 @@ from homeassistant.helpers.entity import Entity
 from .controller import ScheduleController
 
 # Names for thermostats without a device (no translated entity name then).
-_FALLBACK_NAMES = {"enabled": "schedule", "scheduled_temperature": "scheduled temperature"}
+_FALLBACK_NAMES = {
+    "enabled": "schedule",
+    "scheduled_temperature": "scheduled temperature",
+    "occupancy": "occupancy",
+}
 
 
 class ScheduleEntity(Entity):

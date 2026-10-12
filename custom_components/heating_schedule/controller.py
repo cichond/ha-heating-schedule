@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Callable
+from datetime import datetime, timedelta
+from functools import partial
 import logging
 import math
 from typing import Any
@@ -33,24 +36,55 @@ from homeassistant.core import (
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.event import (
+    async_call_later,
     async_track_point_in_time,
     async_track_state_change_event,
+    async_track_time_change,
 )
 from homeassistant.helpers.start import async_at_started
 from homeassistant.util import dt as dt_util
 
-from .const import CONF_CLIMATE_ENTITY, DEFAULT_STEP, DOMAIN
+from .const import (
+    CONF_AWAY_DELAY,
+    CONF_AWAY_ENTITIES,
+    CONF_AWAY_TEMPERATURE,
+    CONF_CLIMATE_ENTITY,
+    CONF_EMPTY_DELAY,
+    CONF_EMPTY_SETBACK,
+    CONF_PRESENCE_ENTITIES,
+    DEFAULT_AWAY_DELAY,
+    DEFAULT_EMPTY_DELAY,
+    DEFAULT_EMPTY_SETBACK,
+    DEFAULT_STEP,
+    DOMAIN,
+    PROFILE_BACKFILL_DAYS,
+    REASON_AWAY,
+    REASON_EMPTY,
+    REASON_SCHEDULE,
+)
+from .presence import AbsenceTracker, entity_present
+from .profile import DAY_NAMES, Profile, floor_slot, occupancy_slots
 from .schedule import Slot, current_slot, normalize_schedule
 from .store import ScheduleStore
 
 _LOGGER = logging.getLogger(__name__)
+
+PROFILE_FIRST_UPDATE = 60  # seconds after start
 
 
 class ScheduleController:
     """Keeps the target temperature of a thermostat in line with its schedule.
 
     Only the target temperature is set; the HVAC mode is left to the user.
-    A manual change holds until the next point that changes the temperature.
+    A manual change holds until the effective target changes again: the next
+    schedule point, or presence lowering/restoring the temperature.
+
+    Optional presence handling (entry options):
+    - room presence entities: any of them present = room occupied. With a
+      setback configured, the target drops by it after the room has been
+      empty for the delay. The entities also feed the occupancy profile.
+    - away entities: when none of them has been present for the delay, the
+      target is capped at the away temperature.
     """
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry, store: ScheduleStore) -> None:
@@ -61,7 +95,38 @@ class ScheduleController:
         self._listeners: set[Callable[[], None]] = set()
         self._unsub_timer: CALLBACK_TYPE | None = None
         self._pending_apply = False
+        self._profile_lock = asyncio.Lock()
         self.slot: Slot | None = None
+        self._effective_temp: float | None = None
+
+        options = entry.options
+        self.presence_entities: list[str] = list(options.get(CONF_PRESENCE_ENTITIES, []))
+        self.empty_setback: float = float(options.get(CONF_EMPTY_SETBACK, DEFAULT_EMPTY_SETBACK))
+        self.away_entities: list[str] = list(options.get(CONF_AWAY_ENTITIES, []))
+        away_temp = options.get(CONF_AWAY_TEMPERATURE)
+        self.away_temperature: float | None = float(away_temp) if away_temp is not None else None
+
+        self.room = (
+            AbsenceTracker(
+                hass,
+                self.presence_entities,
+                timedelta(minutes=options.get(CONF_EMPTY_DELAY, DEFAULT_EMPTY_DELAY)),
+                self._presence_changed,
+            )
+            if self.presence_entities
+            else None
+        )
+        self.away = (
+            AbsenceTracker(
+                hass,
+                self.away_entities,
+                timedelta(minutes=options.get(CONF_AWAY_DELAY, DEFAULT_AWAY_DELAY)),
+                self._presence_changed,
+            )
+            if self.away_entities and self.away_temperature is not None
+            else None
+        )
+        self.profile = self._load_profile() if self.presence_entities else None
 
     # -- data ---------------------------------------------------------------
 
@@ -88,10 +153,22 @@ class ScheduleController:
             "step": attrs.get(ATTR_TARGET_TEMP_STEP) or DEFAULT_STEP,
         }
 
+    def effective(self) -> tuple[float | None, str]:
+        """Target the thermostat should have now, and why."""
+        if self.slot is None:
+            return None, REASON_SCHEDULE
+        temp = self.slot.temp
+        if self.away and self.away.absent and self.away_temperature < temp:
+            return self.away_temperature, REASON_AWAY
+        if self.room and self.room.absent and self.empty_setback > 0:
+            return round(temp - self.empty_setback, 2), REASON_EMPTY
+        return temp, REASON_SCHEDULE
+
     def as_dict(self) -> dict[str, Any]:
         """Payload for the frontend."""
         slot = self.slot
         registry = er.async_get(self.hass)
+        temp, reason = self.effective()
         return {
             "entry_id": self.entry.entry_id,
             "climate_entity": self.climate_entity,
@@ -102,12 +179,33 @@ class ScheduleController:
                 "next_change": slot.next_change.isoformat() if slot and slot.next_change else None,
                 "next_temp": slot.next_temp if slot else None,
             },
+            "effective": {"temp": temp, "reason": reason},
+            "presence": {
+                "entities": self.presence_entities,
+                "occupied": self.room.present if self.room else None,
+                "empty": bool(self.room and self.room.absent),
+                "setback": self.empty_setback,
+                "away_entities": self.away_entities,
+                "away": bool(self.away and self.away.absent),
+                "away_temperature": self.away_temperature,
+            },
+            "profile": (
+                {
+                    "days": dict(zip(DAY_NAMES, self.profile.avg, strict=True)),
+                    "weeks": self.profile.weeks(),
+                }
+                if self.profile
+                else None
+            ),
             "limits": self.limits(),
             "switch_entity": registry.async_get_entity_id(
                 "switch", DOMAIN, f"{self.entry.entry_id}_enabled"
             ),
             "sensor_entity": registry.async_get_entity_id(
                 "sensor", DOMAIN, f"{self.entry.entry_id}_scheduled_temperature"
+            ),
+            "occupancy_entity": registry.async_get_entity_id(
+                "binary_sensor", DOMAIN, f"{self.entry.entry_id}_occupancy"
             ),
         }
 
@@ -123,13 +221,13 @@ class ScheduleController:
             item["days"] = normalize_schedule(days)
         if enabled is not None:
             item["enabled"] = enabled
-        old_temp = self.slot.temp if self.slot else None
+        old_temp = self.effective()[0]
         was_enabled = self.enabled
         self._store.set(self.entry.entry_id, item)
         self._reschedule()
         # Apply right away only when it means something: switching on, or the
-        # slot in force got a new temperature. Otherwise a manual override stays.
-        if self.enabled and (not was_enabled or self.slot.temp != old_temp):
+        # target in force changed. Otherwise a manual override stays.
+        if self.enabled and (not was_enabled or self.effective()[0] != old_temp):
             await self.async_apply()
 
     # -- listeners ----------------------------------------------------------
@@ -152,7 +250,11 @@ class ScheduleController:
     # -- engine -------------------------------------------------------------
 
     async def async_start(self) -> None:
+        for tracker in (self.room, self.away):
+            if tracker:
+                self.entry.async_on_unload(tracker.async_start())
         self._reschedule()
+        self._effective_temp = self.effective()[0]
         self.entry.async_on_unload(
             async_track_state_change_event(
                 self.hass, [self.climate_entity], self._async_climate_changed
@@ -170,6 +272,13 @@ class ScheduleController:
     async def _async_started(self, _hass: HomeAssistant) -> None:
         if self.enabled:
             await self.async_apply()
+        if self.profile is not None:
+            self.entry.async_on_unload(
+                async_call_later(self.hass, PROFILE_FIRST_UPDATE, self._async_profile_tick)
+            )
+            self.entry.async_on_unload(
+                async_track_time_change(self.hass, self._async_profile_tick, minute=2, second=0)
+            )
 
     @callback
     def _reschedule(self) -> None:
@@ -189,6 +298,12 @@ class ScheduleController:
         self._reschedule()
         await self.async_apply()
 
+    @callback
+    def _presence_changed(self) -> None:
+        self._notify()
+        if self.enabled and self.effective()[0] != self._effective_temp:
+            self.hass.async_create_task(self.async_apply())
+
     async def _async_climate_changed(self, event: Event[EventStateChangedData]) -> None:
         new_state = event.data["new_state"]
         if self._pending_apply and _available(new_state):
@@ -196,18 +311,21 @@ class ScheduleController:
             await self.async_apply()
 
     async def async_apply(self) -> None:
-        """Set the scheduled temperature on the thermostat."""
-        if not self.enabled or self.slot is None:
+        """Set the effective target temperature on the thermostat."""
+        temp, reason = self.effective()
+        self._effective_temp = temp
+        if not self.enabled or temp is None:
             return
         state = self.hass.states.get(self.climate_entity)
         if not _available(state):
             _LOGGER.info("%s unavailable, will apply schedule when it is back", self.climate_entity)
             self._pending_apply = True
             return
-        target = self._fit(self.slot.temp, state)
+        target = self._fit(temp, state)
         self._pending_apply = False
         if state.attributes.get(ATTR_TEMPERATURE) == target:
             return
+        _LOGGER.debug("%s -> %s (%s)", self.climate_entity, target, reason)
         try:
             await self.hass.services.async_call(
                 CLIMATE_DOMAIN,
@@ -231,6 +349,65 @@ class ScheduleController:
         if (high := attrs.get(ATTR_MAX_TEMP)) is not None:
             value = min(value, math.floor(high / step) * step)
         return round(value, 2)
+
+    # -- occupancy profile --------------------------------------------------
+
+    def _load_profile(self) -> Profile:
+        """Stored profile, or a fresh one if the presence entities changed."""
+        data = self._store.get_profile(self.entry.entry_id)
+        if data and sorted(data.get("entities", [])) == sorted(self.presence_entities):
+            return Profile(data)
+        return Profile()
+
+    async def _async_profile_tick(self, _now: Any = None) -> None:
+        try:
+            await self.async_update_profile()
+        except Exception:  # never let a recorder hiccup break the schedule
+            _LOGGER.exception("Updating the occupancy profile of %s failed", self.climate_entity)
+
+    async def async_update_profile(self) -> None:
+        """Fold presence history since the last sample into the profile (from the recorder)."""
+        if self.profile is None or "recorder" not in self.hass.config.components:
+            return
+        async with self._profile_lock:
+            end = floor_slot(dt_util.utcnow())
+            start = self.profile.last_sample or end - timedelta(days=PROFILE_BACKFILL_DAYS)
+            start = dt_util.as_utc(start)
+            if end - start < timedelta(minutes=15):
+                return
+            series = await self._async_presence_history(start, end)
+            slots = occupancy_slots(series, start, end)
+            for slot_start, fraction in slots:
+                self.profile.add(dt_util.as_local(slot_start), fraction)
+            if not slots:
+                self.profile.last_sample = end
+            self._store.set_profile(
+                self.entry.entry_id,
+                {**self.profile.as_dict(), "entities": self.presence_entities},
+            )
+        _LOGGER.debug("Profile of %s: %d new slots", self.climate_entity, len(slots))
+        self._notify()
+
+    async def _async_presence_history(
+        self, start: datetime, end: datetime
+    ) -> list[list[tuple[datetime, bool | None]]]:
+        from homeassistant.components.recorder import get_instance, history
+
+        states: dict[str, list[State]] = await get_instance(self.hass).async_add_executor_job(
+            partial(
+                history.get_significant_states,
+                self.hass,
+                start,
+                end,
+                self.presence_entities,
+                significant_changes_only=False,
+                no_attributes=True,
+            )
+        )
+        return [
+            [(max(s.last_changed, start), entity_present(s)) for s in states.get(entity_id, [])]
+            for entity_id in self.presence_entities
+        ]
 
 
 def _available(state: State | None) -> bool:

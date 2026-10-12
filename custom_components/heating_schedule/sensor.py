@@ -13,7 +13,12 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import HeatingScheduleConfigEntry
-from .const import ATTR_NEXT_CHANGE, ATTR_NEXT_TEMPERATURE
+from .const import (
+    ATTR_EFFECTIVE_TEMPERATURE,
+    ATTR_NEXT_CHANGE,
+    ATTR_NEXT_TEMPERATURE,
+    ATTR_REASON,
+)
 from .entity import ScheduleEntity
 
 
@@ -43,7 +48,10 @@ class ScheduledTemperatureSensor(ScheduleEntity, SensorEntity):
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         slot = self.controller.slot
+        temp, reason = self.controller.effective()
         return {
+            ATTR_EFFECTIVE_TEMPERATURE: temp,
+            ATTR_REASON: reason,
             ATTR_NEXT_CHANGE: slot.next_change.isoformat() if slot and slot.next_change else None,
             ATTR_NEXT_TEMPERATURE: slot.next_temp if slot else None,
         }

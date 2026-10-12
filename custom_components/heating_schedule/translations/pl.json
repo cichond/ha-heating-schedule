@@ -4,31 +4,83 @@
       "user": {
         "title": "Harmonogram ogrzewania",
         "description": "Wybierz termostat. Harmonogram ustawia tylko temperaturę zadaną; trybu pracy (grzanie/wyłączony) nie zmienia.",
-        "data": { "climate_entity": "Termostat" }
+        "data": {
+          "climate_entity": "Termostat"
+        }
       }
     },
-    "abort": { "already_configured": "Ten termostat ma już harmonogram." }
+    "abort": {
+      "already_configured": "Ten termostat ma już harmonogram."
+    }
   },
   "entity": {
-    "switch": { "enabled": { "name": "Harmonogram" } },
-    "sensor": { "scheduled_temperature": { "name": "Temperatura z harmonogramu" } }
+    "switch": {
+      "enabled": {
+        "name": "Harmonogram"
+      }
+    },
+    "sensor": {
+      "scheduled_temperature": {
+        "name": "Temperatura z harmonogramu"
+      }
+    },
+    "binary_sensor": {
+      "occupancy": {
+        "name": "Obecność"
+      }
+    }
   },
   "services": {
     "set_schedule": {
       "name": "Ustaw harmonogram",
       "description": "Zastępuje harmonogram tygodnia i/lub go włącza albo wyłącza.",
       "fields": {
-        "entity_id": { "name": "Termostat", "description": "Termostat z harmonogramem." },
-        "schedule": { "name": "Harmonogram", "description": "Dni mon…sun, każdy to lista punktów {time: \"HH:MM\", temp}. Pierwszy punkt dnia o 00:00." },
-        "enabled": { "name": "Włączony", "description": "Czy harmonogram ustawia temperaturę zadaną." }
+        "entity_id": {
+          "name": "Termostat",
+          "description": "Termostat z harmonogramem."
+        },
+        "schedule": {
+          "name": "Harmonogram",
+          "description": "Dni mon…sun, każdy to lista punktów {time: \"HH:MM\", temp}. Pierwszy punkt dnia o 00:00."
+        },
+        "enabled": {
+          "name": "Włączony",
+          "description": "Czy harmonogram ustawia temperaturę zadaną."
+        }
       }
     },
     "import_scheduler": {
       "name": "Importuj ze Schedulera",
       "description": "Tworzy harmonogramy z przełączników Schedulera, które wywołują climate.set_temperature.",
       "fields": {
-        "entity_id": { "name": "Przełączniki Schedulera", "description": "Przełączniki do importu. Domyślnie wszystkie switch.schedule_*." },
-        "overwrite": { "name": "Nadpisz", "description": "Nadpisz dni termostatów, które mają już harmonogram." }
+        "entity_id": {
+          "name": "Przełączniki Schedulera",
+          "description": "Przełączniki do importu. Domyślnie wszystkie switch.schedule_*."
+        },
+        "overwrite": {
+          "name": "Nadpisz",
+          "description": "Nadpisz dni termostatów, które mają już harmonogram."
+        }
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Obecność",
+        "description": "Encje obecności: pokój jest zajęty, gdy którakolwiek jest włączona (osoba/urządzenie: w domu). Z nich powstaje profil obecności na karcie. Encje „poza domem”: dom jest pusty, gdy żadnej nie ma w domu przez podany czas. Stan nieznany/niedostępny nigdy nie liczy się jako nieobecność.",
+        "data": {
+          "presence_entities": "Encje obecności w pokoju",
+          "empty_setback": "Obniżka w pustym pokoju",
+          "empty_delay": "Pusty pokój po",
+          "away_entities": "Encje „poza domem” (osoby)",
+          "away_temperature": "Temperatura poza domem",
+          "away_delay": "Poza domem po"
+        },
+        "data_description": {
+          "empty_setback": "O ile obniżyć temperaturę, gdy pokój jest pusty przez podany czas. 0 = wyłączone (ma sens tylko przy szybkiej podłogówce).",
+          "away_temperature": "Gdy nikogo nie ma w domu, temperatura nie wyżej niż ta. Puste = wyłączone."
+        }
       }
     }
   }

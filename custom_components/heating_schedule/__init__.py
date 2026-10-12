@@ -26,7 +26,7 @@ from .services import async_register_services
 from .store import ScheduleStore
 from .websocket import async_register_websocket
 
-PLATFORMS = [Platform.SENSOR, Platform.SWITCH]
+PLATFORMS = [Platform.BINARY_SENSOR, Platform.SENSOR, Platform.SWITCH]
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
@@ -69,8 +69,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: HeatingScheduleConfigEnt
     entry.runtime_data = controller
     await controller.async_start()
     entry.async_on_unload(controller.async_stop)
+    entry.async_on_unload(entry.add_update_listener(_async_options_updated))
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
+
+
+async def _async_options_updated(hass: HomeAssistant, entry: HeatingScheduleConfigEntry) -> None:
+    """Presence options changed: rebuild the controller and entities."""
+    await hass.config_entries.async_reload(entry.entry_id)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: HeatingScheduleConfigEntry) -> bool:
