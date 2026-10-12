@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from homeassistant.helpers.device import async_device_info_to_link_from_entity
+from homeassistant.helpers.device import async_entity_id_to_device
 from homeassistant.helpers.entity import Entity
 
 from .controller import ScheduleController
@@ -20,11 +20,9 @@ class ScheduleEntity(Entity):
         self.controller = controller
         self._attr_unique_id = f"{controller.entry.entry_id}_{key}"
         self._attr_translation_key = key
-        device_info = async_device_info_to_link_from_entity(
-            controller.hass, controller.climate_entity
-        )
-        if device_info is not None:
-            self._attr_device_info = device_info
+        device = async_entity_id_to_device(controller.hass, controller.climate_entity)
+        if device is not None:
+            self.device_entry = device
             self._attr_has_entity_name = True
         else:
             self._attr_has_entity_name = False

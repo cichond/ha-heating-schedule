@@ -52,6 +52,7 @@ entity: climate.bedroom_thermostat
   [Scheduler component](https://github.com/nielsfaber/scheduler-component) switches that call
   `climate.set_temperature`. Default: all `switch.schedule_*`. Returns what was imported.
   Disable or remove the Scheduler schedules afterwards so the two do not compete.
+  The service exists once the integration is loaded, i.e. after the first thermostat has been added.
 
 ## Websocket API
 

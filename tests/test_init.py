@@ -167,3 +167,27 @@ async def test_websocket(hass: HomeAssistant, setup, hass_ws_client) -> None:
     event = await client.receive_json()
     assert event["event"]["enabled"] is False
     assert (await client.receive_json())["success"]
+
+
+async def test_entities_join_thermostat_device(hass: HomeAssistant, freezer) -> None:
+    from homeassistant.helpers import device_registry as dr, entity_registry as er
+
+    source = MockConfigEntry(domain="mqtt")
+    source.add_to_hass(hass)
+    device = dr.async_get(hass).async_get_or_create(
+        config_entry_id=source.entry_id, identifiers={("mqtt", "trv1")}, name="Bedroom Thermostat"
+    )
+    er.async_get(hass).async_get_or_create(
+        "climate", "mqtt", "trv1", device_id=device.id, suggested_object_id="bedroom"
+    )
+    hass.states.async_set("climate.bedroom", "off", ATTRS)
+    async_mock_service(hass, "climate", "set_temperature")
+    entry = MockConfigEntry(domain=DOMAIN, data={CONF_CLIMATE_ENTITY: "climate.bedroom"})
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    registry = er.async_get(hass)
+    switch = registry.async_get("switch.bedroom_thermostat_schedule")
+    assert switch is not None
+    assert switch.device_id == device.id
