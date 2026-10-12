@@ -1,0 +1,35 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Harmonogram ogrzewania",
+        "description": "Wybierz termostat. Harmonogram ustawia tylko temperaturę zadaną; trybu pracy (grzanie/wyłączony) nie zmienia.",
+        "data": { "climate_entity": "Termostat" }
+      }
+    },
+    "abort": { "already_configured": "Ten termostat ma już harmonogram." }
+  },
+  "entity": {
+    "switch": { "enabled": { "name": "Harmonogram" } },
+    "sensor": { "scheduled_temperature": { "name": "Temperatura z harmonogramu" } }
+  },
+  "services": {
+    "set_schedule": {
+      "name": "Ustaw harmonogram",
+      "description": "Zastępuje harmonogram tygodnia i/lub go włącza albo wyłącza.",
+      "fields": {
+        "entity_id": { "name": "Termostat", "description": "Termostat z harmonogramem." },
+        "schedule": { "name": "Harmonogram", "description": "Dni mon…sun, każdy to lista punktów {time: \"HH:MM\", temp}. Pierwszy punkt dnia o 00:00." },
+        "enabled": { "name": "Włączony", "description": "Czy harmonogram ustawia temperaturę zadaną." }
+      }
+    },
+    "import_scheduler": {
+      "name": "Importuj ze Schedulera",
+      "description": "Tworzy harmonogramy z przełączników Schedulera, które wywołują climate.set_temperature.",
+      "fields": {
+        "entity_id": { "name": "Przełączniki Schedulera", "description": "Przełączniki do importu. Domyślnie wszystkie switch.schedule_*." },
+        "overwrite": { "name": "Nadpisz", "description": "Nadpisz dni termostatów, które mają już harmonogram." }
+      }
+    }
+  }
+}

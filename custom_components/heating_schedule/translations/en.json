@@ -1,0 +1,35 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Heating schedule",
+        "description": "Pick the thermostat to schedule. The schedule only sets the target temperature; the HVAC mode stays as it is.",
+        "data": { "climate_entity": "Thermostat" }
+      }
+    },
+    "abort": { "already_configured": "This thermostat already has a schedule." }
+  },
+  "entity": {
+    "switch": { "enabled": { "name": "Schedule" } },
+    "sensor": { "scheduled_temperature": { "name": "Scheduled temperature" } }
+  },
+  "services": {
+    "set_schedule": {
+      "name": "Set schedule",
+      "description": "Replace the week schedule and/or turn it on or off.",
+      "fields": {
+        "entity_id": { "name": "Thermostat", "description": "Thermostat with a schedule." },
+        "schedule": { "name": "Schedule", "description": "Days mon…sun, each a list of points {time: \"HH:MM\", temp}. The first point of a day is at 00:00." },
+        "enabled": { "name": "Enabled", "description": "Whether the schedule sets the target temperature." }
+      }
+    },
+    "import_scheduler": {
+      "name": "Import from Scheduler",
+      "description": "Create schedules from Scheduler component switches that call climate.set_temperature.",
+      "fields": {
+        "entity_id": { "name": "Scheduler switches", "description": "Switches to import. Default: all switch.schedule_*." },
+        "overwrite": { "name": "Overwrite", "description": "Overwrite days of thermostats that already have a schedule." }
+      }
+    }
+  }
+}

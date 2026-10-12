@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>heating-schedule-card dev</title>
+<style>
+  body { font-family: Roboto, system-ui, sans-serif; background: #f5f5f5; margin: 0; padding: 16px;
+         --primary-color: #03a9f4; --primary-text-color: #212121; --secondary-text-color: #727272;
+         --card-background-color: #fff; --divider-color: rgba(0,0,0,.12); --secondary-background-color: #eee; }
+  body.dark { background: #111; --primary-text-color: #e1e1e1; --secondary-text-color: #9b9b9b;
+         --card-background-color: #1c1c1c; --divider-color: rgba(255,255,255,.12); --secondary-background-color: #2a2a2a; color: #e1e1e1; }
+  #cards { display: grid; gap: 16px; max-width: 720px; }
+  ha-card { display: block; background: var(--card-background-color); border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,.2); }
+</style>
+</head>
+<body>
+<div id="cards"></div>
+<script type="module">
+  // Minimal stand-ins for HA elements and the hass object.
+  customElements.define("ha-card", class extends HTMLElement {});
+  customElements.define("ha-switch", class extends HTMLElement {
+    set checked(v) { this._c = v; this.textContent = v ? "●" : "○"; } get checked() { return this._c; }
+    connectedCallback() { this.style.cursor = "pointer"; this.onclick = () => { this.checked = !this.checked; this.dispatchEvent(new Event("change")); }; }
+  });
+  const params = new URLSearchParams(location.search);
+  if (params.has("dark")) document.body.classList.add("dark");
+  await import("../../custom_components/heating_schedule/frontend/heating-schedule-card.js");
+
+  const workday = [{time:"00:00",temp:19},{time:"05:30",temp:21},{time:"08:30",temp:19},{time:"19:00",temp:21},{time:"22:00",temp:19}];
+  const weekend = [{time:"00:00",temp:19},{time:"06:30",temp:21},{time:"10:00",temp:19},{time:"19:00",temp:21},{time:"22:30",temp:19}];
+  const days = {mon:workday,tue:workday,wed:workday,thu:workday,fri:workday,sat:weekend,sun:weekend};
+  let info = { entry_id: "x", climate_entity: "climate.sypialnia_termostat", enabled: true, days,
+    current: { temp: 19, next_change: new Date(new Date().setHours(19,0,0,0)).toISOString(), next_temp: 21 },
+    limits: { min: 5, max: 45, step: 1 }, switch_entity: "switch.sypialnia_termostat_harmonogram", sensor_entity: null };
+  const subs = [];
+  const midnight = new Date(); midnight.setHours(0,0,0,0);
+  function history(start) {
+    const rows = []; const t0 = new Date(start).getTime(); const end = Math.min(Date.now(), t0 + 864e5);
+    let cur = 19.4;
+    for (let t = t0; t < end; t += 15 * 60e3) {
+      const m = (t - t0) / 60e3; const target = m >= 330 && m < 510 || m >= 1140 && m < 1320 ? 21 : 19;
+      cur += (target - cur) * 0.12 + (Math.random() - .5) * .1;
+      rows.push({ s: "heat", lu: t / 1000, a: { current_temperature: Math.round(cur * 10) / 10, temperature: target } });
+    }
+    return rows;
+  }
+  const hass = {
+    language: "pl", locale: { language: "pl" },
+    states: { "climate.sypialnia_termostat": { entity_id: "climate.sypialnia_termostat", state: params.get("mode") ?? "heat",
+      attributes: { friendly_name: "Sypialnia Termostat", current_temperature: 19.6, temperature: 19 } } },
+    connection: { subscribeMessage: async (cb, msg) => { subs.push(cb); setTimeout(() => cb(info)); return async () => {}; } },
+    callWS: async (msg) => {
+      if (msg.type === "history/history_during_period") return { [msg.entity_ids[0]]: history(msg.start_time) };
+      if (msg.type === "heating_schedule/save") { info = { ...info, ...(msg.days ? { days: msg.days } : {}), ...(msg.enabled !== undefined ? { enabled: msg.enabled } : {}) }; subs.forEach(cb => cb(info)); window.lastSave = msg; return info; }
+      throw { code: "unknown", message: msg.type };
+    },
+  };
+  for (const cfg of [{ entity: "climate.sypialnia_termostat" }]) {
+    const card = document.createElement("heating-schedule-card");
+    card.setConfig({ type: "custom:heating-schedule-card", ...cfg });
+    card.hass = hass;
+    document.getElementById("cards").append(card);
+  }
+  window.hass = hass;
+</script>
+</body>
+</html>

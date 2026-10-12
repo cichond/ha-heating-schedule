@@ -1,0 +1,26 @@
+set_schedule:
+  fields:
+    entity_id:
+      required: true
+      selector:
+        entity:
+          domain: climate
+    schedule:
+      example: '{"mon": [{"time": "00:00", "temp": 19}, {"time": "06:00", "temp": 21}], "tue": [...], "...": "..."}'
+      selector:
+        object:
+    enabled:
+      selector:
+        boolean:
+
+import_scheduler:
+  fields:
+    entity_id:
+      selector:
+        entity:
+          domain: switch
+          multiple: true
+    overwrite:
+      default: true
+      selector:
+        boolean:
