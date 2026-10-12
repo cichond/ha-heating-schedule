@@ -13,12 +13,14 @@ import {
   cloneWeek,
   dayOf,
   dropEmpty,
+  monotoneCurve,
   formatTime,
   fromPts,
   moveEdge,
   removeSegment,
   segmentEnd,
   setTemp,
+  smoothPoints,
   snap,
   splitSegment,
   toPts,
@@ -52,6 +54,8 @@ interface CardConfig {
   entity: string;
   name?: string;
   height?: number;
+  /** Draw the measured temperature as a smooth curve instead of the reported (rounded) steps. */
+  smooth?: boolean;
   /** Show a settings button that fires ``heating-schedule-settings`` (used by the panel). */
   settings?: boolean;
 }
@@ -168,7 +172,10 @@ export class HeatingScheduleCard extends LitElement {
         { name: "entity", required: true, selector: { entity: { domain: "climate" } } },
         { name: "name", selector: { text: {} } },
         { name: "height", selector: { number: { min: 120, max: 600, mode: "box", unit_of_measurement: "px" } } },
+        { name: "smooth", selector: { boolean: {} } },
       ],
+      computeLabel: (field: { name: string }) =>
+        field.name === "smooth" ? strings(navigator.language).smooth : undefined,
     };
   }
 
@@ -524,9 +531,16 @@ export class HeatingScheduleCard extends LitElement {
     let targetPath = "";
     if (historyHere) {
       const cur = history!.current;
-      if (cur.length) {
-        currentPath = cur.map(([m, v], i) => `${i ? "L" : "M"}${x(m)},${y(clamp(v, lo, hi))}`).join("");
-        currentPath += `L${x(history!.end)},${y(clamp(cur[cur.length - 1][1], lo, hi))}`;
+      const cy = (v: number) => y(clamp(v, lo, hi));
+      if (cur.length && this._config?.smooth) {
+        const knots = smoothPoints(cur, history!.end);
+        currentPath = `M${x(knots[0][0])},${cy(knots[0][1])}`;
+        currentPath += monotoneCurve(knots)
+          .map(([ax, ay, bx, by, px, py]) => `C${x(ax)},${cy(ay)} ${x(bx)},${cy(by)} ${x(px)},${cy(py)}`)
+          .join("");
+      } else if (cur.length) {
+        currentPath = cur.map(([m, v], i) => `${i ? "L" : "M"}${x(m)},${cy(v)}`).join("");
+        currentPath += `L${x(history!.end)},${cy(cur[cur.length - 1][1])}`;
       }
       const tgt = history!.target;
       if (tgt.length) {

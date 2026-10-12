@@ -50,6 +50,8 @@ The integration adds a **Heating** sidebar panel (`/heating-schedule`, "Ogrzewan
 runs in Polish) with the card of every configured thermostat. Everything is configured there:
 
 - **+** in the header adds a thermostat,
+- the curve icon in the header switches the measured temperature between the reported steps and a smooth
+  curve (remembered per browser),
 - the cog on a card renames it, sets its presence entities and empty-room setback, or removes its schedule.
 
 Adding, renaming and changing presence apply immediately (the entry reloads); no restart is needed.
@@ -73,6 +75,7 @@ type: custom:heating-schedule-card
 entity: climate.bedroom_thermostat
 # name: Bedroom         # optional (default: the name set in the panel)
 # height: 220           # optional, px
+# smooth: true          # optional: smooth curve for the measured temperature
 ```
 
 - Day tabs (Mon…Sun). The chart shows the schedule (step line), and for the most recent
