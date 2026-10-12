@@ -99,7 +99,9 @@ async def test_clearing_presence_removes_its_data(
 ) -> None:
     entry = await _setup(hass)
     hass.states.async_set("binary_sensor.desk", "on")
-    hass.config_entries.async_update_entry(entry, options={"presence_entities": ["binary_sensor.desk"]})
+    hass.config_entries.async_update_entry(
+        entry, options={"presence_entities": ["binary_sensor.desk"]}
+    )
     await hass.async_block_till_done()
     registry = er.async_get(hass)
     unique_id = f"{entry.entry_id}_occupancy"
