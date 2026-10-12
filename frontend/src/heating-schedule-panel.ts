@@ -16,16 +16,6 @@ type Dialog =
   | { kind: "settings"; info: ScheduleInfo; data: Record<string, unknown> }
   | { kind: "add"; data: Record<string, unknown> };
 
-const SMOOTH_KEY = "heating-schedule.smooth";
-
-function loadSmooth(): boolean {
-  try {
-    return localStorage.getItem(SMOOTH_KEY) === "1";
-  } catch {
-    return false;
-  }
-}
-
 const PRESENCE_DOMAINS = ["binary_sensor", "person", "device_tracker", "input_boolean", "switch", "light"];
 
 /**
@@ -58,8 +48,6 @@ export class HeatingSchedulePanel extends LitElement {
   @state() private _dialog?: Dialog;
   @state() private _dialogError?: string;
   @state() private _busy = false;
-  /** Per browser: smooth temperature curve on all cards. */
-  @state() private _smooth = loadSmooth();
 
   private _cards = new Map<string, Card>();
   private _loading = false;
@@ -122,16 +110,7 @@ export class HeatingSchedulePanel extends LitElement {
   }
 
   private _cardConfig(entity: string) {
-    return { type: "custom:heating-schedule-card", entity, settings: true, smooth: this._smooth };
-  }
-
-  private _toggleSmooth(): void {
-    this._smooth = !this._smooth;
-    try {
-      localStorage.setItem(SMOOTH_KEY, this._smooth ? "1" : "0");
-    } catch {
-      // private mode: keep it for this visit only
-    }
+    return { type: "custom:heating-schedule-card", entity, settings: true };
   }
 
   // -- dialogs ----------------------------------------------------------------
@@ -259,15 +238,6 @@ export class HeatingSchedulePanel extends LitElement {
       <div class="toolbar">
         <ha-menu-button .hass=${this.hass} .narrow=${this.narrow}></ha-menu-button>
         <div class="title">${t.panel_title}</div>
-        <button
-          class="tool ${this._smooth ? "on" : ""}"
-          title=${t.smooth}
-          aria-label=${t.smooth}
-          aria-pressed=${this._smooth ? "true" : "false"}
-          @click=${this._toggleSmooth}
-        >
-          <ha-icon icon=${this._smooth ? "mdi:chart-bell-curve-cumulative" : "mdi:chart-line-stacked"}></ha-icon>
-        </button>
         ${this._admin
           ? html`<button class="tool" title=${t.panel_add} aria-label=${t.panel_add} @click=${this._openAdd}>
               <ha-icon icon="mdi:plus"></ha-icon>
@@ -381,9 +351,6 @@ export class HeatingSchedulePanel extends LitElement {
       background: none;
       color: var(--error-color, #db4437);
       border-color: var(--error-color, #db4437);
-    }
-    button.tool:not(.on) {
-      opacity: 0.6;
     }
     button.tool {
       display: inline-flex;

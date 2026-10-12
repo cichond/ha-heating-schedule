@@ -13,14 +13,12 @@ import {
   cloneWeek,
   dayOf,
   dropEmpty,
-  monotoneCurve,
   formatTime,
   fromPts,
   moveEdge,
   removeSegment,
   segmentEnd,
   setTemp,
-  smoothPoints,
   snap,
   splitSegment,
   toPts,
@@ -54,8 +52,6 @@ interface CardConfig {
   entity: string;
   name?: string;
   height?: number;
-  /** Draw the measured temperature as a smooth curve instead of the reported (rounded) steps. */
-  smooth?: boolean;
   /** Show a settings button that fires ``heating-schedule-settings`` (used by the panel). */
   settings?: boolean;
 }
@@ -172,10 +168,7 @@ export class HeatingScheduleCard extends LitElement {
         { name: "entity", required: true, selector: { entity: { domain: "climate" } } },
         { name: "name", selector: { text: {} } },
         { name: "height", selector: { number: { min: 120, max: 600, mode: "box", unit_of_measurement: "px" } } },
-        { name: "smooth", selector: { boolean: {} } },
       ],
-      computeLabel: (field: { name: string }) =>
-        field.name === "smooth" ? strings(navigator.language).smooth : undefined,
     };
   }
 
@@ -415,6 +408,7 @@ export class HeatingScheduleCard extends LitElement {
     const t = this._t;
     const attrs = climate.attributes;
     const mode = climate.state === "off" ? t.mode_off : climate.state === "heat" ? t.mode_heat : climate.state;
+    const icon = climate.state === "off" ? "mdi:fire-off" : climate.state === "heat" ? "mdi:fire" : "mdi:thermostat";
     const info = this._info;
     let next: unknown = nothing;
     if (info?.enabled && info.current.next_change && info.current.next_temp !== null) {
@@ -427,26 +421,12 @@ export class HeatingScheduleCard extends LitElement {
       <div class="status">
         <span class="current">${this._fmtTemp(attrs.current_temperature)}</span>
         <span class="target">${t.target} ${this._fmtTemp(attrs.temperature)}</span>
-        <span class="mode ${climate.state}">${mode}</span>
-        ${this._renderPresenceChip()}
+        <ha-icon class="mode ${climate.state}" icon=${icon} title=${mode} aria-label=${mode}></ha-icon>
         ${next}
       </div>
       ${this._renderOverride()}
       ${info?.enabled && climate.state === "off" ? html`<div class="hint">${t.off_hint}</div>` : nothing}
     `;
-  }
-
-  private _renderPresenceChip() {
-    const presence = this._info?.presence;
-    if (!presence?.entities.length) return nothing;
-    const t = this._t;
-    const label =
-      presence.occupied === null
-        ? t.presence_unknown
-        : presence.occupied
-          ? t.presence_yes
-          : t.presence_no;
-    return html`<span class="mode presence ${presence.occupied ? "on" : ""}">${label}</span>`;
   }
 
   private _renderOverride() {
@@ -532,13 +512,7 @@ export class HeatingScheduleCard extends LitElement {
     if (historyHere) {
       const cur = history!.current;
       const cy = (v: number) => y(clamp(v, lo, hi));
-      if (cur.length && this._config?.smooth) {
-        const knots = smoothPoints(cur, history!.end);
-        currentPath = `M${x(knots[0][0])},${cy(knots[0][1])}`;
-        currentPath += monotoneCurve(knots)
-          .map(([ax, ay, bx, by, px, py]) => `C${x(ax)},${cy(ay)} ${x(bx)},${cy(by)} ${x(px)},${cy(py)}`)
-          .join("");
-      } else if (cur.length) {
+      if (cur.length) {
         currentPath = cur.map(([m, v], i) => `${i ? "L" : "M"}${x(m)},${cy(v)}`).join("");
         currentPath += `L${x(history!.end)},${cy(cur[cur.length - 1][1])}`;
       }
@@ -588,13 +562,13 @@ export class HeatingScheduleCard extends LitElement {
               width=${Math.max(1, x(to) - x(from))} height="5"></rect>`,
           )
         : nothing}
-      ${targetPath ? svg`<path class="target" d=${targetPath}></path>` : nothing}
       ${currentPath ? svg`<path class="current" d=${currentPath}></path>` : nothing}
       <path class="schedule" d=${line}></path>
       ${this._selected !== undefined && editing && pts[this._selected]
         ? svg`<line class="selected" x1=${x(pts[this._selected].m)} x2=${x(segmentEnd(pts, this._selected))}
             y1=${y(pts[this._selected].t)} y2=${y(pts[this._selected].t)}></line>`
         : nothing}
+      ${targetPath ? svg`<path class="target" d=${targetPath}></path>` : nothing}
       ${pts.map((p, i) => {
         const x1 = x(p.m);
         const x2 = x(segmentEnd(pts, i));
@@ -972,19 +946,11 @@ export class HeatingScheduleCard extends LitElement {
       color: var(--secondary-text-color);
     }
     .mode {
-      font-size: 0.8em;
-      padding: 1px 8px;
-      border-radius: 10px;
-      background: var(--secondary-background-color, rgba(127, 127, 127, 0.15));
-      color: var(--secondary-text-color);
+      --mdc-icon-size: 20px;
+      color: var(--disabled-text-color, var(--secondary-text-color));
     }
     .mode.heat {
-      background: var(--hs-current);
-      color: #fff;
-    }
-    .mode.presence.on {
-      background: var(--hs-presence);
-      color: #fff;
+      color: var(--hs-current);
     }
     .override {
       display: inline-block;
@@ -1120,6 +1086,7 @@ export class HeatingScheduleCard extends LitElement {
       stroke: var(--hs-target);
       stroke-width: 1.5;
       stroke-dasharray: 4 3;
+      pointer-events: none;
     }
     .now {
       stroke: var(--hs-now);

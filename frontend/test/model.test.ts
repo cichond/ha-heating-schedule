@@ -5,11 +5,9 @@ import {
   dayOf,
   dropEmpty,
   formatTime,
-  monotoneCurve,
   moveEdge,
   type Pt,
   removeSegment,
-  smoothPoints,
   splitSegment,
   tempAt,
   toPts,
@@ -76,35 +74,4 @@ test("removeSegment", () => {
 test("dayOf is Monday-first", () => {
   assert.equal(dayOf(new Date(2026, 9, 12)), "mon");
   assert.equal(dayOf(new Date(2026, 9, 18)), "sun");
-});
-
-test("smoothPoints: crossings at changes, plateau middles", () => {
-  const series: [number, number][] = [[0, 20], [60, 20], [120, 21], [240, 22], [300, 21]];
-  assert.deepEqual(smoothPoints(series, 400, 30), [
-    [0, 20],
-    [90, 20],
-    [120, 20.5],
-    [150, 21],
-    [210, 21],
-    [240, 21.5],
-    [270, 22],
-    [300, 21.5],
-    [330, 21],
-    [400, 21],
-  ]);
-  assert.deepEqual(smoothPoints([], 100), []);
-  assert.deepEqual(smoothPoints([[10, 19]], 100), [[10, 19], [100, 19]]);
-});
-
-test("monotoneCurve stays within the data", () => {
-  const pts: [number, number][] = [[0, 20], [120, 20.5], [180, 21], [240, 21.5], [270, 22], [300, 21.5]];
-  const curve = monotoneCurve(pts);
-  assert.equal(curve.length, pts.length - 1);
-  curve.forEach((seg, i) => {
-    const lo = Math.min(pts[i][1], pts[i + 1][1]);
-    const hi = Math.max(pts[i][1], pts[i + 1][1]);
-    for (const y of [seg[1], seg[3]]) assert.ok(y >= lo - 1e-9 && y <= hi + 1e-9);
-    assert.deepEqual([seg[4], seg[5]], pts[i + 1]);
-  });
-  assert.deepEqual(monotoneCurve([[0, 1]]), []);
 });

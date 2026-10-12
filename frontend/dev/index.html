@@ -85,7 +85,7 @@
   }
   for (const cfg of params.has("panel") ? [] : [{ entity: "climate.sypialnia_termostat" }]) {
     const card = document.createElement("heating-schedule-card");
-    card.setConfig({ type: "custom:heating-schedule-card", smooth: params.has("smooth"), ...cfg });
+    card.setConfig({ type: "custom:heating-schedule-card", ...cfg });
     card.hass = hass;
     document.getElementById("cards").append(card);
   }
