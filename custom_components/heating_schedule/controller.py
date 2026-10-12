@@ -225,7 +225,8 @@ class ScheduleController:
     def _notify(self) -> None:
         for listener in list(self._listeners):
             listener()
-        async_dispatcher_send(self.hass, signal_updated(self.climate_entity))
+        # Carries the controller: during an entry reload it is not findable yet.
+        async_dispatcher_send(self.hass, signal_updated(self.climate_entity), self)
 
     # -- engine -------------------------------------------------------------
 

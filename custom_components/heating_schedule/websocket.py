@@ -20,7 +20,7 @@ from .const import (
     DOMAIN,
     signal_updated,
 )
-from .controller import async_find_controller, async_find_entry
+from .controller import ScheduleController, async_find_controller, async_find_entry
 from .schedule import ScheduleError
 
 
@@ -104,15 +104,15 @@ def ws_subscribe(
         return
 
     @callback
-    def _forward() -> None:
-        if (controller := async_find_controller(hass, entity_id)) is not None:
+    def _forward(controller: ScheduleController | None) -> None:
+        if controller is not None:
             connection.send_message(websocket_api.event_message(msg["id"], controller.as_dict()))
 
     connection.subscriptions[msg["id"]] = async_dispatcher_connect(
         hass, signal_updated(entity_id), _forward
     )
     connection.send_result(msg["id"])
-    _forward()
+    _forward(async_find_controller(hass, entity_id))
 
 
 @websocket_api.require_admin

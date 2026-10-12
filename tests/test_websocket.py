@@ -55,10 +55,11 @@ async def test_configure_survives_reload(
     assert hass.states.get(occupancy).state == "on"
 
     # The subscription follows the reloaded controller.
-    while True:
-        event = (await client.receive_json())["event"]
+    for _ in range(10):
+        event = (await client.receive_json(timeout=5))["event"]
         if event["title"] == "Biuro":
             break
+    assert event["title"] == "Biuro"
     assert event["presence"]["entities"] == ["binary_sensor.desk"]
     assert event["presence"]["setback"] == 1.5
     assert event["presence"]["delay"] == 20
