@@ -12,35 +12,33 @@ Zasady pracy w każdym etapie:
 - Każdy etap kończy się osobnym wydaniem: tag, HACS, restart HA (za zgodą użytkownika), sprawdzenie logów.
 - Etap 1 wydajemy jak najszybciej, bo dane zbierają się tygodniami.
 
-## Etap 1 (0.10.0): zbieranie danych, bez UI
+## Etap 1 (0.10.0): zbieranie danych, bez UI (wydane 2026-10-13)
 
 Cel: od teraz liczyć czas nagrzewania i ręczne zmiany temperatury, tak jak dziś profil obecności.
 
-1. **`stats.py`** (czyste funkcje + klasa danych, wzorem `profile.py`):
-   - **`manual_changes(rows, own_contexts) -> list[ManualChange]`:** zmiany atrybutu `temperature`
-     w historii climate, których nie zrobiła integracja. Rozpoznanie po `context.id`: integracja
-     zapamiętuje id kontekstów własnych wywołań. Gdy kontekst jest nieznany, porównujemy z wartością
-     ustawioną ostatnio przez integrację (±0,1°).
-   - **`ManualStats`:** dla każdego dnia tygodnia i kwadransu średnia różnica „ręcznie ustawione minus
-     harmonogram”, ważona czasem trwania, oraz liczba dni z ręczną zmianą. Średnia krocząca z około
-     8 tygodni (jak `Profile`).
-   - **`heatup_runs(rows) -> list[HeatupRun]`:** epizody od podniesienia zadanej o ≥1° przy
-     `hvac_action=heating` do `current_temperature ≥ zadana − 0,5`. Wynik to minuty i liczba stopni.
-     Epizody przerwane (nowa zmiana zadanej albo tryb `off`) są odrzucane.
-   - **`HeatupStats`:** mediana minut na stopień i mediana opóźnienia z ostatnich N (np. 20) epizodów.
-   - Testy z syntetycznymi seriami: przejście przez północ, DST, przerwane epizody, własne i obce konteksty.
-2. **Zbieranie:** w `controller.py`, w istniejącym godzinnym cyklu profilu (`_async_profile_tick`),
-   pobranie z recordera historii climate z atrybutami od `last_sample`. Nowe statystyki zapisywane
-   w nowym pliku `.storage/heating_schedule.stats` (osobny `Store`, opóźniony zapis jak profil).
-   Uzupełnienie wstecz do 14 dni przy pierwszym starcie. Statystyki zbierają się **zawsze**, także bez
-   encji obecności.
-3. **Rejestr własnych kontekstów:** `async_apply` przekazuje `Context()` i zapisuje jego id w ograniczonym
-   buforze, np. ostatnie 200 id albo 14 dni. Bufor trafia do statystyk, żeby przetrwał restart.
-4. **`as_dict`:** dochodzi `heatup` (`minutes_per_degree`, `runs`). Na razie tylko do testów i debugowania,
-   karta tego nie pokazuje.
-5. **Testy integracyjne:** recorder w testach, jak w `test_profile_recorder.py`. Sprawdzić, że zmiana
-   zrobiona przez integrację nie liczy się jako ręczna, a zmiana z `hass.services.async_call` z innym
-   kontekstem liczy się.
+Zrobione inaczej niż w pierwszej wersji planu: **ręczna zmiana to odchylenie zadanej od harmonogramu**,
+a nie rozpoznawanie po kontekście wywołania. Z2M odsyła stan z własnym kontekstem, więc rozpoznawanie
+po kontekście by nie działało. Odchylenie jest odporne na to i nie wymaga rejestru kontekstów.
+
+1. **`stats.py`** (czyste funkcje bez importów, wzorem `profile.py`):
+   - **`deviation_slots(samples, start, end, planned)`:** dla każdego kwadransu średnia ważona czasem
+     różnica `zadana − planned(kwadrans)`, gdy termostat grzał. Kwadranse grzane krócej niż przez
+     połowę czasu są pomijane.
+   - **`ManualStats`:** dla każdego dnia tygodnia i kwadransu `avg` (średnie odchylenie), `share`
+     (udział próbek z |odchyleniem| ≥ 0,25°) i `count`. Średnia krocząca z około 8 tygodni.
+     `reset(day, slots)` czyści kwadranse po zmianie harmonogramu.
+   - **`heatup_runs(samples)`:** epizody od podniesienia zadanej o ≥1° (pokój ≥1° poniżej) do
+     `current ≥ zadana − 0,5`. Przerwane (zmiana zadanej, wyłączenie, ponad 6 h) są odrzucane.
+     Nie wymaga `hvac_action`, więc działa też z localtuya.
+   - **`HeatupStats`:** ostatnie 20 epizodów, mediana minut na stopień (od 3 epizodów).
+2. **Zbieranie** w `controller.py`: `_async_history_tick` co godzinę (profil i statystyki), historia
+   climate z atrybutami od `last_sample` minus 6 h. Odchylenia liczone **tylko przy włączonym
+   harmonogramie**. Zapis w `.storage/heating_schedule.stats`, uzupełnienie wstecz do 14 dni.
+   Zbieranie działa dla każdego termostatu.
+3. **Zmiana harmonogramu** (`async_update` z `days`) czyści odchylenia kwadransów, w których zmieniła
+   się planowana temperatura.
+4. **`as_dict`:** dochodzi `stats` (`manual_weeks`, `heatup_runs`, `heatup_minutes_per_degree`).
+5. **Testy:** `tests/test_stats.py` (czyste) i `tests/test_stats_recorder.py` (recorder).
 
 ## Etap 2 (0.11.0): analizator sugestii (backend)
 
@@ -145,6 +143,5 @@ Cel: od teraz liczyć czas nagrzewania i ręczne zmiany temperatury, tak jak dzi
   Testy i mock muszą to pokrywać, a etap 1 trzeba wydać szybko.
 - **Termostaty localtuya (łazienki):** brak `hvac_action` oznacza brak statystyk nagrzewania. Wtedy
   zostaje bieżąca godzina startu, bez przesuwania.
-- **Kontekst zmian z Z2M:** po zmianie z integracji Z2M odsyła stan z innym kontekstem. Fallback
-  „wartość = ostatnio ustawiona” jest konieczny, inaczej własne zmiany będą liczone jako ręczne.
-  Test to obejmuje.
+- **Odchylenia tylko przy włączonym harmonogramie:** dopóki harmonogramy są wyłączone, nie zbierają się
+  dane o ręcznych zmianach. Czas nagrzewania zbiera się zawsze.
