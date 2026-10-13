@@ -182,7 +182,7 @@ async def ws_remove(
     {
         vol.Required("type"): f"{DOMAIN}/suggestion/apply",
         vol.Required("entity_id"): cv.entity_id,
-        vol.Required("id"): str,
+        vol.Required("suggestion_id"): str,
     }
 )
 @websocket_api.async_response
@@ -193,7 +193,7 @@ async def ws_suggestion_apply(
     if (controller := async_find_controller(hass, msg["entity_id"])) is None:
         connection.send_error(msg["id"], "not_found", f"No schedule for {msg['entity_id']}")
         return
-    if not await controller.async_apply_suggestion(msg["id"]):
+    if not await controller.async_apply_suggestion(msg["suggestion_id"]):
         connection.send_error(msg["id"], "not_found", "The suggestion no longer applies")
         return
     connection.send_result(msg["id"], controller.as_dict())
@@ -203,7 +203,7 @@ async def ws_suggestion_apply(
     {
         vol.Required("type"): f"{DOMAIN}/suggestion/dismiss",
         vol.Required("entity_id"): cv.entity_id,
-        vol.Required("id"): str,
+        vol.Required("suggestion_id"): str,
     }
 )
 @callback
@@ -214,7 +214,7 @@ def ws_suggestion_dismiss(
     if (controller := async_find_controller(hass, msg["entity_id"])) is None:
         connection.send_error(msg["id"], "not_found", f"No schedule for {msg['entity_id']}")
         return
-    if not controller.async_dismiss_suggestion(msg["id"]):
+    if not controller.async_dismiss_suggestion(msg["suggestion_id"]):
         connection.send_error(msg["id"], "not_found", "Unknown suggestion")
         return
     connection.send_result(msg["id"])

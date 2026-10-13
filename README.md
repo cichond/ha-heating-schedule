@@ -122,7 +122,7 @@ entity: climate.bedroom_thermostat
 
 `heating_schedule/list`, `heating_schedule/get`, `heating_schedule/save` (`entity_id`, `days?`, `enabled?`),
 `heating_schedule/subscribe` (`entity_id`; sends the schedule now and after every change),
-`heating_schedule/suggestion/apply` and `heating_schedule/suggestion/dismiss` (`entity_id`, `id`).
+`heating_schedule/suggestion/apply` and `heating_schedule/suggestion/dismiss` (`entity_id`, `suggestion_id`).
 Admin only: `heating_schedule/add` (`entity_id`), `heating_schedule/configure` (`entity_id`, `title?`,
 `presence_entities?`), `heating_schedule/remove` (`entity_id`).
 

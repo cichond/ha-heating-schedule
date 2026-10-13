@@ -24,6 +24,16 @@ def _office(slot: int) -> float:
     return 0.85 if 9 <= hour < 16 or hour >= 21 else 0.03
 
 
+async def _send(client, action: str, suggestion_id: str) -> None:
+    await client.send_json_auto_id(
+        {
+            "type": f"{DOMAIN}/suggestion/{action}",
+            "entity_id": CLIMATE,
+            "suggestion_id": suggestion_id,
+        }
+    )
+
+
 async def _setup(hass: HomeAssistant) -> MockConfigEntry:
     hass.states.async_set(CLIMATE, "heat", ATTRS)
     hass.states.async_set("binary_sensor.desk", "off")
@@ -62,9 +72,7 @@ async def test_analyze_apply_dismiss(
     assert shown[0]["days"] == list(DAYS)
 
     client = await hass_ws_client(hass)
-    await client.send_json_auto_id(
-        {"type": f"{DOMAIN}/suggestion/apply", "entity_id": CLIMATE, "id": shown[0]["id"]}
-    )
+    await _send(client, "apply", shown[0]["id"])
     response = await client.receive_json()
     assert response["success"]
     assert controller.days["mon"][2] == {"time": "16:00", "temp": 18.0}
@@ -77,9 +85,7 @@ async def test_analyze_apply_dismiss(
     controller.stats.suggestions.pop("last_analysis")
     assert not controller.async_analyze()
 
-    await client.send_json_auto_id(
-        {"type": f"{DOMAIN}/suggestion/dismiss", "entity_id": CLIMATE, "id": shown[1]["id"]}
-    )
+    await _send(client, "dismiss", shown[1]["id"])
     assert (await client.receive_json())["success"]
     assert shown[1]["id"] not in [s["id"] for s in controller.as_dict()["suggestions"]]
     assert set(controller.stats.suggestions["dismissed"]) == {
@@ -91,9 +97,7 @@ async def test_analyze_apply_dismiss(
     assert shown[1]["id"] not in [s["id"] for s in controller.as_dict()["suggestions"]]
 
     # An applied suggestion is gone; applying it again fails.
-    await client.send_json_auto_id(
-        {"type": f"{DOMAIN}/suggestion/apply", "entity_id": CLIMATE, "id": shown[0]["id"]}
-    )
+    await _send(client, "apply", shown[0]["id"])
     assert (await client.receive_json())["error"]["code"] == "not_found"
 
 
