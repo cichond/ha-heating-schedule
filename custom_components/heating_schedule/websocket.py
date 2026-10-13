@@ -29,6 +29,8 @@ def async_register_websocket(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_save)
     websocket_api.async_register_command(hass, ws_subscribe)
     websocket_api.async_register_command(hass, ws_configure)
+    websocket_api.async_register_command(hass, ws_suggestion_apply)
+    websocket_api.async_register_command(hass, ws_suggestion_dismiss)
     websocket_api.async_register_command(hass, ws_add)
     websocket_api.async_register_command(hass, ws_remove)
 
@@ -173,4 +175,46 @@ async def ws_remove(
         connection.send_error(msg["id"], "not_found", f"No schedule for {msg['entity_id']}")
         return
     await hass.config_entries.async_remove(entry.entry_id)
+    connection.send_result(msg["id"])
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/suggestion/apply",
+        vol.Required("entity_id"): cv.entity_id,
+        vol.Required("id"): str,
+    }
+)
+@websocket_api.async_response
+async def ws_suggestion_apply(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Apply a schedule suggestion (anyone with access to the panel)."""
+    if (controller := async_find_controller(hass, msg["entity_id"])) is None:
+        connection.send_error(msg["id"], "not_found", f"No schedule for {msg['entity_id']}")
+        return
+    if not await controller.async_apply_suggestion(msg["id"]):
+        connection.send_error(msg["id"], "not_found", "The suggestion no longer applies")
+        return
+    connection.send_result(msg["id"], controller.as_dict())
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/suggestion/dismiss",
+        vol.Required("entity_id"): cv.entity_id,
+        vol.Required("id"): str,
+    }
+)
+@callback
+def ws_suggestion_dismiss(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Dismiss a schedule suggestion; it does not come back for a few weeks."""
+    if (controller := async_find_controller(hass, msg["entity_id"])) is None:
+        connection.send_error(msg["id"], "not_found", f"No schedule for {msg['entity_id']}")
+        return
+    if not controller.async_dismiss_suggestion(msg["id"]):
+        connection.send_error(msg["id"], "not_found", "Unknown suggestion")
+        return
     connection.send_result(msg["id"])

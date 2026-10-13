@@ -31,6 +31,16 @@
     }
   },
   "services": {
+    "analyze": {
+      "name": "Przeanalizuj harmonogram",
+      "description": "Wylicz sugestie zmian harmonogramu teraz (zwykle raz w tygodniu).",
+      "fields": {
+        "entity_id": {
+          "name": "Termostat",
+          "description": "Termostat z harmonogramem."
+        }
+      }
+    },
     "set_schedule": {
       "name": "Ustaw harmonogram",
       "description": "Zastępuje harmonogram tygodnia i/lub go włącza albo wyłącza.",

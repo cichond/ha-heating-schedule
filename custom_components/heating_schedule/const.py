@@ -25,6 +25,7 @@ DEFAULT_STEP = 0.5
 
 SERVICE_SET_SCHEDULE = "set_schedule"
 SERVICE_IMPORT_SCHEDULER = "import_scheduler"
+SERVICE_ANALYZE = "analyze"
 
 ATTR_SCHEDULE = "schedule"
 ATTR_ENABLED = "enabled"

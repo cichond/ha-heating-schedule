@@ -31,6 +31,16 @@
     }
   },
   "services": {
+    "analyze": {
+      "name": "Analyze schedule",
+      "description": "Compute schedule suggestions now (normally weekly).",
+      "fields": {
+        "entity_id": {
+          "name": "Thermostat",
+          "description": "Thermostat with a schedule."
+        }
+      }
+    },
     "set_schedule": {
       "name": "Set schedule",
       "description": "Replace the week schedule and/or turn it on or off.",

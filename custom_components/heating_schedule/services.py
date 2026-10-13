@@ -24,6 +24,7 @@ from .const import (
     ATTR_SCHEDULE,
     CONF_CLIMATE_ENTITY,
     DOMAIN,
+    SERVICE_ANALYZE,
     SERVICE_IMPORT_SCHEDULER,
     SERVICE_SET_SCHEDULE,
 )
@@ -31,6 +32,8 @@ from .controller import ScheduleController, async_find_controller
 from .schedule import DAYS, ScheduleError, from_scheduler
 
 _LOGGER = logging.getLogger(__name__)
+
+ANALYZE_SCHEMA = vol.Schema({vol.Required(ATTR_ENTITY_ID): cv.entity_domain("climate")})
 
 SET_SCHEDULE_SCHEMA = vol.Schema(
     {
@@ -64,7 +67,11 @@ def async_register_services(hass: HomeAssistant) -> None:
             hass, call.data.get(ATTR_ENTITY_ID), call.data[ATTR_OVERWRITE]
         )
 
+    async def analyze(call: ServiceCall) -> None:
+        _controller(hass, call.data[ATTR_ENTITY_ID]).async_analyze(force=True)
+
     hass.services.async_register(DOMAIN, SERVICE_SET_SCHEDULE, set_schedule, SET_SCHEDULE_SCHEMA)
+    hass.services.async_register(DOMAIN, SERVICE_ANALYZE, analyze, ANALYZE_SCHEMA)
     hass.services.async_register(
         DOMAIN,
         SERVICE_IMPORT_SCHEDULER,

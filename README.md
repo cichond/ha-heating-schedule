@@ -38,6 +38,21 @@ recorder, statistics for future schedule suggestions, stored in `.storage/heatin
   deviations of the slots it changed),
 - **heat-up runs**: how long the room took to reach a target raised by at least 1° (the last 20 runs).
 
+### Schedule suggestions
+
+Once a week the integration derives suggestions from these statistics and the occupancy profile; nothing
+is changed until someone applies one:
+
+- **move a point**: raise when people typically arrive (earlier by the measured heat-up time), lower when
+  they typically leave,
+- **setback**: lower the temperature in a long (≥3 h), typically empty stretch,
+- **temperature**: where people keep turning it up or down, move the schedule about 75% of the way.
+
+Only changes of at least 30 minutes or 1° (and the thermostat step) are suggested; the same change on
+several weekdays is one suggestion. At most two are shown at a time. Occupancy suggestions need three
+weeks of profile, temperature suggestions three weeks of manual deviations. After the schedule changes
+there are no new suggestions for two weeks; a dismissed suggestion stays away for four weeks.
+
 Under the chart the card draws two strips: the actual presence of that day and, below it in a darker
 green, the typical occupancy of the selected weekday (stronger = more often occupied).
 
@@ -96,6 +111,7 @@ entity: climate.bedroom_thermostat
 ## Services
 
 - `heating_schedule.set_schedule` — `entity_id` (climate), optional `schedule` (all seven days) and `enabled`.
+- `heating_schedule.analyze` — `entity_id`: compute suggestions now (normally weekly).
 - `heating_schedule.import_scheduler` — create schedules from
   [Scheduler component](https://github.com/nielsfaber/scheduler-component) switches that call
   `climate.set_temperature`. Default: all `switch.schedule_*`. Returns what was imported.
@@ -105,7 +121,8 @@ entity: climate.bedroom_thermostat
 ## Websocket API
 
 `heating_schedule/list`, `heating_schedule/get`, `heating_schedule/save` (`entity_id`, `days?`, `enabled?`),
-`heating_schedule/subscribe` (`entity_id`; sends the schedule now and after every change).
+`heating_schedule/subscribe` (`entity_id`; sends the schedule now and after every change),
+`heating_schedule/suggestion/apply` and `heating_schedule/suggestion/dismiss` (`entity_id`, `id`).
 Admin only: `heating_schedule/add` (`entity_id`), `heating_schedule/configure` (`entity_id`, `title?`,
 `presence_entities?`), `heating_schedule/remove` (`entity_id`).
 

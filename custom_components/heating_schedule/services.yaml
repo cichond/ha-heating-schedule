@@ -13,6 +13,14 @@ set_schedule:
       selector:
         boolean:
 
+analyze:
+  fields:
+    entity_id:
+      required: true
+      selector:
+        entity:
+          domain: climate
+
 import_scheduler:
   fields:
     entity_id:

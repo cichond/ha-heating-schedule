@@ -210,12 +210,15 @@ class ThermostatStats:
         self.heatup = HeatupStats(data.get("heatup"))
         last = data.get("last_sample")
         self.last_sample: datetime | None = datetime.fromisoformat(last) if last else None
+        # Schedule suggestions: queue, dismissed keys, last analysis, quiet period.
+        self.suggestions: dict[str, Any] = data.get("suggestions") or {}
 
     def as_dict(self) -> dict[str, Any]:
         return {
             "manual": self.manual.as_dict(),
             "heatup": self.heatup.as_dict(),
             "last_sample": self.last_sample.isoformat() if self.last_sample else None,
+            "suggestions": self.suggestions,
         }
 
 

@@ -59,10 +59,13 @@ from .profile import DAY_NAMES, SLOT, SLOTS_PER_DAY, Profile, floor_slot, occupa
 from .schedule import DAYS, Slot, current_slot, normalize_schedule, temperature_at
 from .stats import HEATUP_LOOKBACK, Sample, ThermostatStats, deviation_slots, heatup_runs
 from .store import ScheduleStore
+from .suggest import DISMISS_DAYS, Limits, Suggestion, analyze, apply, visible
 
 _LOGGER = logging.getLogger(__name__)
 
 PROFILE_FIRST_UPDATE = 60  # seconds after start
+ANALYSIS_INTERVAL = timedelta(days=7)
+QUIET_AFTER_CHANGE = timedelta(days=14)
 ATTR_CURRENT_TEMPERATURE = "current_temperature"
 
 
@@ -164,6 +167,19 @@ class ScheduleController:
                 "heatup_runs": len(self.stats.heatup.runs),
                 "heatup_minutes_per_degree": self.stats.heatup.minutes_per_degree(),
             },
+            "suggestions": [
+                {
+                    "id": s.id,
+                    "kind": s.kind,
+                    "days": s.days,
+                    "start": s.start,
+                    "end": s.end,
+                    "temp": s.temp,
+                    "params": s.params,
+                    "source": s.source,
+                }
+                for s in self.visible_suggestions()
+            ],
             "limits": self.limits(),
             "switch_entity": registry.async_get_entity_id(
                 "switch", DOMAIN, f"{self.entry.entry_id}_enabled"
@@ -191,6 +207,9 @@ class ScheduleController:
         if days is not None:
             item["days"] = normalize_schedule(days)
             self._forget_changed_slots(self.days, item["days"])
+            # Give the new schedule time before suggesting anything again.
+            self.stats.suggestions["quiet_until"] = (dt_util.now() + QUIET_AFTER_CHANGE).isoformat()
+            self._save_stats()
         if enabled is not None:
             item["enabled"] = enabled
         old_temp = self.effective()
@@ -334,6 +353,10 @@ class ScheduleController:
             await self.async_update_stats()
         except Exception:
             _LOGGER.exception("Updating the statistics of %s failed", self.climate_entity)
+        try:
+            self.async_analyze()
+        except Exception:
+            _LOGGER.exception("Analyzing the schedule of %s failed", self.climate_entity)
 
     async def async_update_profile(self) -> None:
         """Fold presence history since the last sample into the profile (from the recorder)."""
@@ -424,6 +447,85 @@ class ScheduleController:
             for state in states.get(self.climate_entity, [])
         ]
 
+    # -- suggestions ----------------------------------------------------------
+
+    def _queue(self) -> list[Suggestion]:
+        return [Suggestion.from_dict(s) for s in self.stats.suggestions.get("queue", [])]
+
+    def visible_suggestions(self) -> list[Suggestion]:
+        return visible(self._queue(), self.days)
+
+    @callback
+    def async_analyze(self, force: bool = False) -> bool:
+        """Compute new suggestions: weekly, and not within the quiet period after a change."""
+        state = self.stats.suggestions
+        now = dt_util.now()
+        if not force:
+            last = state.get("last_analysis")
+            if last and now - datetime.fromisoformat(last) < ANALYSIS_INTERVAL:
+                return False
+            if (quiet := state.get("quiet_until")) and now < datetime.fromisoformat(quiet):
+                return False
+        cutoff = now - timedelta(days=DISMISS_DAYS)
+        dismissed = {
+            key: when
+            for key, when in state.get("dismissed", {}).items()
+            if datetime.fromisoformat(when) > cutoff
+        }
+        limits = self.limits()
+        manual = self.stats.manual
+        queue = analyze(
+            self.days,
+            Limits(limits["step"] or DEFAULT_STEP, limits["min"], limits["max"]),
+            occupancy=self.profile.avg if self.profile else None,
+            occupancy_weeks=self.profile.weeks() if self.profile else 0,
+            manual_avg=manual.avg,
+            manual_share=manual.share,
+            manual_weeks=manual.weeks(),
+            minutes_per_degree=self.stats.heatup.minutes_per_degree(),
+            dismissed=dismissed,
+            now=now,
+        )
+        state.update(
+            queue=[s.as_dict() for s in queue], dismissed=dismissed, last_analysis=now.isoformat()
+        )
+        self._save_stats()
+        _LOGGER.debug("Suggestions for %s: %d", self.climate_entity, len(queue))
+        self._notify()
+        return True
+
+    async def async_apply_suggestion(self, suggestion_id: str) -> bool:
+        """Apply a visible suggestion to the schedule; False if it no longer applies."""
+        suggestion = next((s for s in self.visible_suggestions() if s.id == suggestion_id), None)
+        if suggestion is None:
+            return False
+        self._drop_from_queue(suggestion_id)
+        await self.async_update(days=apply(suggestion, self.days))
+        return True
+
+    @callback
+    def async_dismiss_suggestion(self, suggestion_id: str) -> bool:
+        """Hide a suggestion; the same change is not suggested again for a while."""
+        suggestion = next((s for s in self._queue() if s.id == suggestion_id), None)
+        if suggestion is None:
+            return False
+        now = dt_util.now().isoformat()
+        dismissed = self.stats.suggestions.setdefault("dismissed", {})
+        dismissed.update(dict.fromkeys(suggestion.keys, now))
+        self._drop_from_queue(suggestion_id)
+        self._save_stats()
+        self._notify()
+        return True
+
+    def _drop_from_queue(self, suggestion_id: str) -> None:
+        state = self.stats.suggestions
+        state["queue"] = [
+            s for s in state.get("queue", []) if Suggestion.from_dict(s).id != suggestion_id
+        ]
+
+    def _save_stats(self) -> None:
+        self._store.set_stats(self.entry.entry_id, self.stats.as_dict())
+
     def _forget_changed_slots(
         self, old: dict[str, list[dict[str, Any]]], new: dict[str, list[dict[str, Any]]]
     ) -> None:
@@ -443,7 +545,7 @@ class ScheduleController:
                 self.stats.manual.reset(day.weekday(), slots)
                 changed = True
         if changed:
-            self._store.set_stats(self.entry.entry_id, self.stats.as_dict())
+            self._save_stats()
 
     async def _async_presence_history(
         self, start: datetime, end: datetime
