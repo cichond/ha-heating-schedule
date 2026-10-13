@@ -1,12 +1,12 @@
 {
   "name": "heating-schedule-card",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "private": true,
   "type": "module",
   "scripts": {
     "build": "rollup -c",
     "watch": "rollup -c -w",
-    "test": "node --test frontend/test/model.test.ts"
+    "test": "node --test frontend/test/model.test.ts frontend/test/suggestions.test.ts"
   },
   "dependencies": {
     "lit": "^3.2.1"

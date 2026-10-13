@@ -26,6 +26,7 @@ import {
   toPts,
   weeksEqual,
 } from "./model";
+import { describeSuggestion, markerOf, type Suggestion } from "./suggestions";
 
 // -- Home Assistant types (the subset used here) ------------------------------
 
@@ -79,6 +80,7 @@ export interface ScheduleInfo {
   switch_entity: string | null;
   sensor_entity: string | null;
   occupancy_entity: string | null;
+  suggestions?: Suggestion[];
 }
 
 interface HistoryRow {
@@ -157,6 +159,8 @@ export class HeatingScheduleCard extends LitElement {
   @state() private _saving = false;
   /** Minute under the pointer (view mode only): tooltip with the line values. */
   @state() private _hover?: number;
+  /** Suggestion being applied or dismissed. */
+  @state() private _suggestBusy?: string;
   /** Touch: the tooltip stays a moment after the finger is lifted. */
   private _hoverTimer?: number;
 
@@ -491,6 +495,7 @@ export class HeatingScheduleCard extends LitElement {
           : nothing}
         ${showHistoryDate ? html`<span class="muted">${t.history_from} ${isoDate(history!.date)}</span>` : nothing}
       </div>
+      ${this._renderSuggestions()}
       ${this._draft ? this._renderEditor() : this._renderSummary()}
     `;
   }
@@ -624,6 +629,7 @@ export class HeatingScheduleCard extends LitElement {
           )}`
         : nothing}
       ${drag?.moved ? this._renderDragLabel(pts, drag) : nothing}
+      ${this._renderSuggestionMarkers(pts, x, y, plotH)}
       ${this._renderCrosshair(x, y, plotH)}
     </svg>`;
   }
@@ -724,6 +730,83 @@ export class HeatingScheduleCard extends LitElement {
       <rect x=${cx - 24} y=${cy - 12} width="48" height="18" rx="4"></rect>
       <text x=${cx} y=${cy + 1} text-anchor="middle">${text}</text>
     </g>`;
+  }
+
+  // -- suggestions ----------------------------------------------------------
+
+  /** Shown on the panel's cards only, and not while editing. */
+  private get _suggestions(): Suggestion[] {
+    if (!this._config?.settings || this._draft) return [];
+    return this._info?.suggestions ?? [];
+  }
+
+  private _renderSuggestionMarkers(
+    pts: Pt[],
+    x: (m: number) => number,
+    y: (t: number) => number,
+    plotH: number,
+  ) {
+    const scale = this._scale;
+    if (!scale) return nothing;
+    const cy = (t: number) => y(clamp(t, scale.lo, scale.hi));
+    return this._suggestions.map((s, i) => {
+      if (!s.days.includes(this._day)) return nothing;
+      const marker = markerOf(s);
+      const before = tempAt(pts, s.start);
+      const top = Math.min(cy(s.temp), cy(before));
+      return svg`<g class="suggestion">
+        <rect class="suggestion-diff" x=${x(s.start)} y=${top}
+          width=${Math.max(1, x(s.end) - x(s.start))} height=${Math.abs(cy(s.temp) - cy(before))}></rect>
+        <line x1=${x(marker.m)} x2=${x(marker.m)} y1=${cy(marker.t) - 4} y2=${PAD.t + plotH}></line>
+        <circle cx=${x(marker.m)} cy=${cy(marker.t) - 13} r="9"></circle>
+        <text x=${x(marker.m)} y=${cy(marker.t) - 9} text-anchor="middle">${i + 1}</text>
+      </g>`;
+    });
+  }
+
+  private _renderSuggestions() {
+    const list = this._suggestions;
+    if (!list.length) return nothing;
+    const t = this._t;
+    const temp = (value: number) => this._fmtTemp(value);
+    return html`<div class="suggestions">
+      ${list.map(
+        (s, i) => html`<div class="suggestion-row">
+          <span class="num">${i + 1}</span>
+          <span class="text">${describeSuggestion(s, this._info?.days, t, temp)}</span>
+          <span class="buttons">
+            <button ?disabled=${!!this._suggestBusy} @click=${() => this._suggestion("dismiss", s.id)}>
+              ${t.suggest_dismiss}
+            </button>
+            <button
+              class="primary"
+              ?disabled=${!!this._suggestBusy}
+              @click=${() => this._suggestion("apply", s.id)}
+            >
+              ${t.suggest_apply}
+            </button>
+          </span>
+        </div>`,
+      )}
+    </div>`;
+  }
+
+  private async _suggestion(action: "apply" | "dismiss", id: string): Promise<void> {
+    if (!this.hass || !this._config) return;
+    this._suggestBusy = id;
+    try {
+      const result = await this.hass.callWS<ScheduleInfo | null>({
+        type: `heating_schedule/suggestion/${action}`,
+        entity_id: this._config.entity,
+        suggestion_id: id,
+      });
+      if (result) this._info = result;
+      this._error = undefined;
+    } catch (err: any) {
+      this._error = err?.message ?? String(err);
+    } finally {
+      this._suggestBusy = undefined;
+    }
   }
 
   private _renderSummary() {
@@ -996,6 +1079,7 @@ export class HeatingScheduleCard extends LitElement {
       --hs-presence: var(--green-color, #4caf50);
       --hs-typical: color-mix(in srgb, var(--hs-presence) 45%, #000);
       --hs-heating: var(--state-climate-heat-color, #ff8100);
+      --hs-suggest: var(--orange-color, #ff9800);
     }
     ha-card {
       padding: 16px;
@@ -1082,6 +1166,62 @@ export class HeatingScheduleCard extends LitElement {
     .heating {
       fill: var(--hs-heating);
       fill-opacity: 0.16;
+    }
+    .suggestion line {
+      stroke: var(--hs-suggest);
+      stroke-width: 1.2;
+      stroke-dasharray: 2 2;
+    }
+    .suggestion circle {
+      fill: var(--hs-suggest);
+    }
+    .suggestion text {
+      fill: #fff;
+      font-size: 11px;
+      font-weight: 700;
+    }
+    .suggestion-diff {
+      fill: none;
+      stroke: var(--hs-suggest);
+      stroke-width: 1.2;
+      stroke-dasharray: 3 2;
+    }
+    .suggestions {
+      display: grid;
+      gap: 6px;
+      margin-top: 10px;
+    }
+    .suggestion-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 8px;
+      border-radius: 8px;
+      background: var(--secondary-background-color, rgba(127, 127, 127, 0.08));
+      font-size: 0.9em;
+    }
+    .suggestion-row .num {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex: none;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: var(--hs-suggest);
+      color: #fff;
+      font-size: 0.75em;
+      font-weight: 700;
+    }
+    .suggestion-row .text {
+      flex: 1 1 12em;
+      min-width: 0;
+    }
+    .suggestion-row .buttons {
+      display: flex;
+      gap: 6px;
+      margin-left: auto;
     }
     .crosshair line {
       stroke: var(--primary-text-color);

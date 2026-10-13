@@ -53,6 +53,9 @@ several weekdays is one suggestion. At most two are shown at a time. Occupancy s
 weeks of profile, temperature suggestions three weeks of manual deviations. After the schedule changes
 there are no new suggestions for two weeks; a dismissed suggestion stays away for four weeks.
 
+On the cards of the sidebar panel each suggestion gets a numbered marker on the chart (the changed range
+is outlined) and a line under it with **Apply** / **Dismiss**. Dashboard cards do not show suggestions.
+
 Under the chart the card draws two strips: the actual presence of that day and, below it in a darker
 green, the typical occupancy of the selected weekday (stronger = more often occupied).
 
