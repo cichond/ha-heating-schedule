@@ -50,6 +50,13 @@ export function segmentEnd(pts: Pt[], i: number): number {
   return i + 1 < pts.length ? pts[i + 1].m : DAY_MIN;
 }
 
+/** 344 -> "5 h 44 min", 40 -> "40 min". */
+export function formatDuration(minutes: number): string {
+  const total = Math.round(minutes);
+  const h = Math.floor(total / 60);
+  return h ? `${h} h ${total % 60} min` : `${total} min`;
+}
+
 export function tempAt(pts: Pt[], minute: number): number {
   let t = pts[0].t;
   for (const p of pts) {

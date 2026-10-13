@@ -4,6 +4,7 @@ import { test } from "node:test";
 import {
   dayOf,
   dropEmpty,
+  formatDuration,
   formatTime,
   moveEdge,
   type Pt,
@@ -74,4 +75,10 @@ test("removeSegment", () => {
 test("dayOf is Monday-first", () => {
   assert.equal(dayOf(new Date(2026, 9, 12)), "mon");
   assert.equal(dayOf(new Date(2026, 9, 18)), "sun");
+});
+
+test("formatDuration", () => {
+  assert.equal(formatDuration(344), "5 h 44 min");
+  assert.equal(formatDuration(40), "40 min");
+  assert.equal(formatDuration(120), "2 h 0 min");
 });

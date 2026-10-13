@@ -13,6 +13,7 @@ import {
   cloneWeek,
   dayOf,
   dropEmpty,
+  formatDuration,
   formatTime,
   fromPts,
   moveEdge,
@@ -21,6 +22,7 @@ import {
   setTemp,
   snap,
   splitSegment,
+  tempAt,
   toPts,
   weeksEqual,
 } from "./model";
@@ -95,6 +97,7 @@ interface History {
   current: [number, number][]; // [minute, value]
   target: [number, number][];
   occupied: [number, number][]; // [start minute, end minute]
+  heating: [number, number][]; // [start minute, end minute] with hvac_action "heating"
   end: number;
 }
 
@@ -117,6 +120,8 @@ interface Scale {
 }
 
 const PAD = { l: 30, r: 8, t: 16, b: 20 };
+/** Extra room under the plot for the presence strips (that day + typical). */
+const STRIPS_H = 12;
 const HISTORY_REFRESH_MS = 5 * 60 * 1000;
 
 function minuteOfDay(date: Date): number {
@@ -155,6 +160,8 @@ export class HeatingScheduleCard extends LitElement {
   @state() private _copyOpen = false;
   @state() private _copyTargets: Day[] = [];
   @state() private _saving = false;
+  /** Minute under the pointer (view mode only): tooltip with the line values. */
+  @state() private _hover?: number;
 
   private _unsub?: Promise<() => Promise<void>>;
   private _subscribeFailed = false;
@@ -287,16 +294,25 @@ export class HeatingScheduleCard extends LitElement {
         significant_changes_only: false,
       });
       if (key !== this._historyKey) return;
+      const endMinute = end === now ? minuteOfDay(now) : DAY_MIN;
       const current: [number, number][] = [];
       const target: [number, number][] = [];
+      const heating: [number, number][] = [];
+      let heatFrom: number | undefined;
       for (const row of result[entity] ?? []) {
         const ts = (row.lu ?? row.lc ?? 0) * 1000;
         const m = clamp((ts - date.getTime()) / 60000, 0, DAY_MIN);
         const attrs = row.a ?? {};
         if (typeof attrs.current_temperature === "number") current.push([m, attrs.current_temperature]);
         if (typeof attrs.temperature === "number") target.push([m, attrs.temperature]);
+        const heats = attrs.hvac_action === "heating";
+        if (heats && heatFrom === undefined) heatFrom = m;
+        if (!heats && heatFrom !== undefined) {
+          if (m > heatFrom) heating.push([heatFrom, m]);
+          heatFrom = undefined;
+        }
       }
-      const endMinute = end === now ? minuteOfDay(now) : DAY_MIN;
+      if (heatFrom !== undefined && endMinute > heatFrom) heating.push([heatFrom, endMinute]);
       const toMinute = (row: HistoryRow) =>
         clamp(((row.lu ?? row.lc ?? 0) * 1000 - date.getTime()) / 60000, 0, DAY_MIN);
       const occupied: [number, number][] = [];
@@ -307,7 +323,7 @@ export class HeatingScheduleCard extends LitElement {
         const to = i + 1 < rows.length ? toMinute(rows[i + 1]) : endMinute;
         if (to > from) occupied.push([from, to]);
       });
-      this._history = { date, current, target, occupied, end: endMinute };
+      this._history = { date, current, target, occupied, heating, end: endMinute };
     } catch (err) {
       this._history = undefined;
     }
@@ -452,8 +468,9 @@ export class HeatingScheduleCard extends LitElement {
     const t = this._t;
     const today = dayOf(new Date());
     const history = this._history;
-    const showHistoryDate =
-      history && this._day !== today && isoDate(history.date) === isoDate(lastDateOf(this._day));
+    const historyHere = !!history && isoDate(history.date) === isoDate(lastDateOf(this._day));
+    const showHistoryDate = historyHere && this._day !== today;
+    const heatMinutes = historyHere ? history!.heating.reduce((sum, [a, b]) => sum + b - a, 0) : 0;
     return html`
       <div class="days">
         ${DAYS.map(
@@ -465,19 +482,24 @@ export class HeatingScheduleCard extends LitElement {
           </button>`,
         )}
       </div>
-      <div class="chart ${this._draft ? "editing" : ""}">${this._width ? this._renderChart() : nothing}</div>
+      <div class="chart ${this._draft ? "editing" : ""}">
+        ${this._width ? this._renderChart() : nothing}${this._renderTooltip()}
+      </div>
       <div class="legend">
         <span><i class="line schedule"></i>${t.legend_schedule}</span>
         <span><i class="line current"></i>${t.legend_current}</span>
         <span><i class="line target"></i>${t.legend_target}</span>
+        ${heatMinutes
+          ? html`<span><i class="swatch heating"></i>${t.legend_heating} <b>${formatDuration(heatMinutes)}</b></span>`
+          : nothing}
+        ${this._presence && this._info?.occupancy_entity
+          ? html`<span><i class="swatch actual"></i>${t.legend_presence}</span>`
+          : nothing}
         ${this._presence && this._info?.profile?.weeks
           ? html`<span
               ><i class="swatch typical"></i>${t.legend_typical} (${this._info.profile.weeks}
               ${t.weeks})</span
             >`
-          : nothing}
-        ${this._presence && this._info?.occupancy_entity
-          ? html`<span><i class="swatch actual"></i>${t.legend_presence}</span>`
           : nothing}
         ${showHistoryDate ? html`<span class="muted">${t.history_from} ${isoDate(history!.date)}</span>` : nothing}
       </div>
@@ -490,8 +512,9 @@ export class HeatingScheduleCard extends LitElement {
     const W = this._width;
     const H = this._config!.height ?? 220;
     const [lo, hi] = this._range ?? this._yRange(pts);
+    const bottom = PAD.b + (this._presence ? STRIPS_H : 0);
     const plotW = W - PAD.l - PAD.r;
-    const plotH = H - PAD.t - PAD.b;
+    const plotH = H - PAD.t - bottom;
     const x = (m: number) => PAD.l + (m / DAY_MIN) * plotW;
     const y = (v: number) => PAD.t + ((hi - v) / (hi - lo)) * plotH;
     this._scale = {
@@ -548,6 +571,7 @@ export class HeatingScheduleCard extends LitElement {
       @pointermove=${this._onPointerMove}
       @pointerup=${this._onPointerUp}
       @pointercancel=${this._onPointerUp}
+      @pointerleave=${() => (this._hover = undefined)}
       @dblclick=${this._onDoubleClick}
     >
       <defs>
@@ -556,22 +580,28 @@ export class HeatingScheduleCard extends LitElement {
           <stop offset="1" class="fill-bottom"></stop>
         </linearGradient>
       </defs>
-      ${this._renderProfile(x, plotW, H)}
+      ${historyHere
+        ? history!.heating.map(
+            ([from, to]) => svg`<rect class="heating" x=${x(from)} y=${PAD.t}
+              width=${Math.max(1, x(to) - x(from))} height=${plotH}></rect>`,
+          )
+        : nothing}
       ${yTicks.map(
         (v) => svg`<line class="grid" x1=${PAD.l} x2=${W - PAD.r} y1=${y(v)} y2=${y(v)}></line>
           <text class="axis" x=${PAD.l - 4} y=${y(v) + 3.5} text-anchor="end">${v}°</text>`,
       )}
       ${xTicks.map(
-        (h) => svg`<line class="grid" x1=${x(h * 60)} x2=${x(h * 60)} y1=${PAD.t} y2=${H - PAD.b}></line>
+        (h) => svg`<line class="grid" x1=${x(h * 60)} x2=${x(h * 60)} y1=${PAD.t} y2=${PAD.t + plotH}></line>
           <text class="axis" x=${x(h * 60)} y=${H - 5} text-anchor=${h === 0 ? "start" : h === 24 ? "end" : "middle"}>${h}</text>`,
       )}
       <path class="area" d=${area}></path>
-      ${historyHere
+      ${this._presence && historyHere
         ? history!.occupied.map(
-            ([from, to]) => svg`<rect class="presence-strip" x=${x(from)} y=${H - PAD.b - 5}
+            ([from, to]) => svg`<rect class="presence-strip" x=${x(from)} y=${PAD.t + plotH + 1}
               width=${Math.max(1, x(to) - x(from))} height="5"></rect>`,
           )
         : nothing}
+      ${this._renderProfile(x, plotW, PAD.t + plotH + 7)}
       ${currentPath ? svg`<path class="current" d=${currentPath}></path>` : nothing}
       <path class="schedule" d=${line}></path>
       ${this._selected !== undefined && editing && pts[this._selected]
@@ -587,7 +617,7 @@ export class HeatingScheduleCard extends LitElement {
           : nothing;
       })}
       ${isToday
-        ? svg`<line class="now" x1=${x(nowM)} x2=${x(nowM)} y1=${PAD.t - 6} y2=${H - PAD.b}></line>
+        ? svg`<line class="now" x1=${x(nowM)} x2=${x(nowM)} y1=${PAD.t - 6} y2=${PAD.t + plotH}></line>
           ${typeof currentTemp === "number"
             ? svg`<circle class="now-dot" cx=${x(nowM)} cy=${y(clamp(currentTemp, lo, hi))} r="4"></circle>`
             : nothing}`
@@ -606,6 +636,7 @@ export class HeatingScheduleCard extends LitElement {
           )}`
         : nothing}
       ${drag?.moved ? this._renderDragLabel(pts, drag) : nothing}
+      ${this._renderCrosshair(x, y, plotH)}
     </svg>`;
   }
 
@@ -624,18 +655,71 @@ export class HeatingScheduleCard extends LitElement {
     return shown;
   }
 
-  /** Background shading: typical occupancy of the selected weekday. */
-  private _renderProfile(x: (m: number) => number, plotW: number, H: number) {
+  /** Strip under the plot: typical occupancy of the selected weekday (stronger = more often). */
+  private _renderProfile(x: (m: number) => number, plotW: number, top: number) {
     const profile = this._presence ? this._info?.profile : undefined;
     if (!profile?.weeks) return nothing;
     const slots = profile.days[this._day] ?? [];
     const width = plotW / slots.length;
     return slots.map((value, i) =>
       value > 0.02
-        ? svg`<rect class="profile" x=${x(i * 15)} y=${PAD.t} width=${width + 0.5}
-            height=${H - PAD.t - PAD.b} fill-opacity=${Math.min(0.35, value * 0.35)}></rect>`
+        ? svg`<rect class="profile" x=${x(i * 15)} y=${top} width=${width + 0.5}
+            height="5" fill-opacity=${0.45 + 0.55 * Math.min(1, value)}></rect>`
         : nothing,
     );
+  }
+
+  /** Line values at a minute: schedule always, measured and target only where history exists. */
+  private _hoverValues(minute: number) {
+    const history = this._history;
+    const here =
+      !!history && isoDate(history.date) === isoDate(lastDateOf(this._day)) && minute <= history.end;
+    const at = (series: [number, number][]) => {
+      let value: number | undefined;
+      for (const [m, v] of series) {
+        if (m > minute) break;
+        value = v;
+      }
+      return value;
+    };
+    return {
+      schedule: tempAt(this._pts(), minute),
+      current: here ? at(history!.current) : undefined,
+      target: here ? at(history!.target) : undefined,
+    };
+  }
+
+  private _renderCrosshair(x: (m: number) => number, y: (t: number) => number, plotH: number) {
+    const m = this._hover;
+    if (m === undefined || this._draft || !this._scale) return nothing;
+    const { lo, hi } = this._scale;
+    const v = this._hoverValues(m);
+    const cy = (t: number) => y(clamp(t, lo, hi));
+    return svg`<g class="crosshair">
+      <line x1=${x(m)} x2=${x(m)} y1=${PAD.t} y2=${PAD.t + plotH}></line>
+      <circle class="dot schedule" cx=${x(m)} cy=${cy(v.schedule)} r="3.5"></circle>
+      ${v.target !== undefined ? svg`<circle class="dot target" cx=${x(m)} cy=${cy(v.target)} r="3.5"></circle>` : nothing}
+      ${v.current !== undefined ? svg`<circle class="dot current" cx=${x(m)} cy=${cy(v.current)} r="3.5"></circle>` : nothing}
+    </g>`;
+  }
+
+  private _renderTooltip() {
+    const m = this._hover;
+    if (m === undefined || this._draft || !this._scale) return nothing;
+    const t = this._t;
+    const v = this._hoverValues(m);
+    const px = this._scale.x(m);
+    const side = px > this._width - 160 ? `right:${this._width - px + 12}px` : `left:${px + 12}px`;
+    return html`<div class="tooltip" style=${side}>
+      <b>${formatTime(m)}</b>
+      <div><span><i class="line schedule"></i>${t.legend_schedule}</span><span>${this._fmtTemp(v.schedule)}</span></div>
+      ${v.current !== undefined
+        ? html`<div><span><i class="line current"></i>${t.legend_current}</span><span>${this._fmtTemp(v.current)}</span></div>`
+        : nothing}
+      ${v.target !== undefined
+        ? html`<div><span><i class="line target"></i>${t.legend_target}</span><span>${this._fmtTemp(v.target)}</span></div>`
+        : nothing}
+    </div>`;
   }
 
   private _renderDragLabel(pts: Pt[], drag: Drag) {
@@ -835,7 +919,10 @@ export class HeatingScheduleCard extends LitElement {
   }
 
   private _onPointerDown(ev: PointerEvent): void {
-    if (!this._draft) return;
+    if (!this._draft) {
+      this._onHover(ev); // touch: a tap shows the values
+      return;
+    }
     const target = ev.target as Element;
     const kind = target.getAttribute("data-kind") as Drag["kind"] | null;
     if (!kind) {
@@ -850,7 +937,17 @@ export class HeatingScheduleCard extends LitElement {
     if (kind === "seg") this._selected = index;
   }
 
+  private _onHover(ev: PointerEvent): void {
+    if (this._draft || !this._scale) return;
+    const minute = Math.round(this._scale.minute(this._local(ev)[0]) / 5) * 5;
+    this._hover = minute < 0 || minute > DAY_MIN ? undefined : Math.min(minute, DAY_MIN - 1);
+  }
+
   private _onPointerMove(ev: PointerEvent): void {
+    if (!this._draft) {
+      this._onHover(ev);
+      return;
+    }
     const drag = this._drag;
     if (!drag || ev.pointerId !== drag.pointerId || !this._scale) return;
     if (!drag.moved && Math.hypot(ev.clientX - drag.x0, ev.clientY - drag.y0) < 4) return;
@@ -902,6 +999,8 @@ export class HeatingScheduleCard extends LitElement {
       --hs-now: var(--error-color, #db4437);
       --hs-grid: var(--divider-color, rgba(127, 127, 127, 0.2));
       --hs-presence: var(--green-color, #4caf50);
+      --hs-typical: color-mix(in srgb, var(--hs-presence) 45%, #000);
+      --hs-heating: var(--state-climate-heat-color, #ff8100);
     }
     ha-card {
       padding: 16px;
@@ -974,9 +1073,11 @@ export class HeatingScheduleCard extends LitElement {
     .profile {
       shape-rendering: crispEdges;
     }
-    .profile,
     .presence-strip {
       fill: var(--hs-presence);
+    }
+    .profile {
+      fill: var(--hs-typical);
     }
     .swatch {
       display: inline-block;
@@ -986,7 +1087,59 @@ export class HeatingScheduleCard extends LitElement {
       background: var(--hs-presence);
     }
     .swatch.typical {
+      background: var(--hs-typical);
+    }
+    .swatch.heating {
+      background: var(--hs-heating);
       opacity: 0.35;
+    }
+    .heating {
+      fill: var(--hs-heating);
+      fill-opacity: 0.16;
+    }
+    .crosshair line {
+      stroke: var(--primary-text-color);
+      stroke-opacity: 0.35;
+      stroke-width: 1;
+    }
+    .crosshair .dot {
+      stroke: var(--card-background-color, #fff);
+      stroke-width: 1.5;
+    }
+    .crosshair .dot.schedule {
+      fill: var(--hs-schedule);
+    }
+    .crosshair .dot.current {
+      fill: var(--hs-current);
+    }
+    .crosshair .dot.target {
+      fill: var(--hs-target);
+    }
+    .tooltip {
+      position: absolute;
+      top: 4px;
+      pointer-events: none;
+      min-width: 130px;
+      padding: 6px 10px;
+      border-radius: 8px;
+      background: var(--card-background-color, #fff);
+      border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.3));
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+      font-size: 0.78em;
+      line-height: 1.5;
+      font-variant-numeric: tabular-nums;
+      z-index: 1;
+    }
+    .tooltip div {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .tooltip span:first-child {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--secondary-text-color);
     }
     .hint {
       color: var(--secondary-text-color);
@@ -1037,6 +1190,7 @@ export class HeatingScheduleCard extends LitElement {
       line-height: 1;
     }
     .chart {
+      position: relative;
       width: 100%;
       min-height: 120px;
       user-select: none;

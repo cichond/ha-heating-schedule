@@ -53,7 +53,7 @@
     for (let t = t0; t < end; t += 15 * 60e3) {
       const m = (t - t0) / 60e3; const target = m >= 330 && m < 510 || m >= 1140 && m < 1320 ? 21 : 19;
       cur += (target - cur) * 0.12 + (Math.random() - .5) * .1;
-      rows.push({ s: "heat", lu: t / 1000, a: { current_temperature: params.has("round") ? Math.round(cur) : Math.round(cur * 10) / 10, temperature: target } });
+      rows.push({ s: "heat", lu: t / 1000, a: { current_temperature: params.has("round") ? Math.round(cur) : Math.round(cur * 10) / 10, temperature: target, hvac_action: cur < target - 0.2 ? "heating" : "idle" } });
     }
     return rows;
   }

@@ -31,8 +31,8 @@ With room presence entities the integration also:
   on first start, then hourly) and stored in `.storage/heating_schedule.profile`. Changing the presence
   entities starts a new profile.
 
-The card shades the chart with the typical occupancy of the selected weekday and draws the actual
-presence of that day as a strip along the bottom. The scheduled-temperature sensor has the attributes
+Under the chart the card draws two strips: the actual presence of that day and, below it in a darker
+green, the typical occupancy of the selected weekday (stronger = more often occupied). The scheduled-temperature sensor has the attributes
 `effective_temperature` and `reason` (`schedule`, `empty`).
 
 ## Installation (HACS)
@@ -78,7 +78,10 @@ entity: climate.bedroom_thermostat
 
 - Day tabs (Mon…Sun). The chart shows the schedule (step line), and for the most recent
   occurrence of that day the measured temperature and the actual target from history,
-  plus a "now" marker on today.
+  plus a "now" marker on today. Periods when the thermostat was heating (`hvac_action: heating`) are
+  shaded orange, with the total heating time in the legend.
+- Hover the chart (tap on a phone) for a tooltip with the schedule, measured and target temperature
+  at that time.
 - **Edit**: drag a level up/down (snaps to the thermostat step), drag a boundary sideways
   (snaps to 15 min; drag it onto a neighbour to remove a segment), double-click a level to split it,
   tap a level for −/+, ‹/› and split/remove buttons. *Copy day to…* copies the day to other days.
