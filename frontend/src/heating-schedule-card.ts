@@ -411,8 +411,10 @@ export class HeatingScheduleCard extends LitElement {
       this._info?.title ??
       climate?.attributes.friendly_name ??
       this._config.entity;
+    // A disabled schedule: faded and darker, so it is obvious at a glance (not while editing).
+    const off = !!this._info && !this._info.enabled && !this._draft;
     return html`
-      <ha-card>
+      <ha-card class=${off ? "disabled" : ""}>
         <div class="header">
           <div class="name">${name}</div>
           <div class="header-end">
@@ -1168,6 +1170,20 @@ export class HeatingScheduleCard extends LitElement {
     ha-card {
       padding: 16px;
       box-sizing: border-box;
+    }
+    ha-card.disabled {
+      background: color-mix(
+        in srgb,
+        var(--ha-card-background, var(--card-background-color, #fff)) 86%,
+        #000
+      );
+    }
+    ha-card.disabled > :not(.header) {
+      filter: grayscale(0.75) brightness(0.92);
+      opacity: 0.7;
+    }
+    ha-card.disabled .name {
+      opacity: 0.7;
     }
     .header {
       display: flex;

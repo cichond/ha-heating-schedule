@@ -50,6 +50,7 @@
     { id: "s1", kind: "shift", days: WD, start: 480, end: 510, temp: 19, params: { from: 510, to: 480, temp: 19 }, source: "data" },
     { id: "s2", kind: "shift", days: WD, start: 1140, end: 1200, temp: 19, params: { from: 1140, to: 1200, temp: 21 }, source: "data" },
   ];
+  if (params.has("disabled")) info.enabled = false;
   // ?ai: an AI Task entity exists; ?aifull: a whole week proposed by the AI
   if (params.has("ai")) info.ai_available = true;
   if (params.has("aifull")) info.ai_full = { id: "full-1", week: Object.fromEntries(Object.keys(days).map(d =>
@@ -107,6 +108,23 @@
     card.setConfig({ type: "custom:heating-schedule-card", settings: params.has("suggest") || params.has("ai") || params.has("aifull"), ...cfg });
     card.hass = hass;
     document.getElementById("cards").append(card);
+    // ?variant=a|b|c: mock-up styles for a disabled schedule (injected into the card)
+    const BASE = `ha-card { display: block; background: var(--card-background-color); border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,.2); }`;
+    const VARIANTS = {
+      none: "",
+      a: `ha-card > :not(.header) { filter: grayscale(0.9); opacity: 0.55; } .name { opacity: 0.6; }`,
+      b: `ha-card { background: color-mix(in srgb, var(--card-background-color, #fff) 86%, #000); }
+          ha-card > :not(.header) { filter: grayscale(0.75) brightness(0.92); opacity: 0.7; } .name { opacity: 0.7; }`,
+      c: `ha-card > :not(.header) { filter: grayscale(0.9); opacity: 0.6; } .name { opacity: 0.6; }
+          .chart { position: relative; }
+          .chart::after { content: "Harmonogram wyłączony"; position: absolute; inset: 0 0 24px 30px; display: flex;
+            align-items: center; justify-content: center; font-weight: 600; letter-spacing: .02em;
+            color: var(--primary-text-color); background: repeating-linear-gradient(45deg, transparent 0 8px, rgba(127,127,127,.14) 8px 16px); }`,
+    };
+    const variant = VARIANTS[params.get("variant")];
+    if (variant !== undefined) customElements.whenDefined("heating-schedule-card").then(async () => {
+      await card.updateComplete; const st = document.createElement("style"); st.textContent = BASE + variant; card.shadowRoot.append(st);
+    });
   }
   window.hass = hass;
 </script>
