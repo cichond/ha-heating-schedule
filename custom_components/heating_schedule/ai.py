@@ -18,7 +18,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import area_registry as ar, entity_registry as er, floor_registry as fr
 
 from .profile import DAY_NAMES
-from .suggest import Limits, validate_week
+from .suggest import MIN_MANUAL_WEEKS, Limits, validate_week
 
 if TYPE_CHECKING:
     from .controller import ScheduleController
@@ -86,10 +86,13 @@ def build_instructions(controller: ScheduleController, *, full: bool) -> str:
         )
     manual = controller.stats.manual
     changes: dict[str, dict[str, float]] = {}
-    if controller.enabled and manual.weeks():
+    if controller.enabled:
         for i, day in enumerate(DAY_NAMES):
             for hour in range(24):
                 slots = range(hour * 4, hour * 4 + 4)
+                # Only habits: seen over several weeks, not a one-off change.
+                if min(manual.count[i][s] for s in slots) < MIN_MANUAL_WEEKS:
+                    continue
                 if sum(manual.share[i][s] for s in slots) / 4 >= MANUAL_HOURLY_SHARE:
                     avg = sum(manual.avg[i][s] for s in slots) / 4
                     changes.setdefault(day, {})[f"{hour:02d}:00"] = round(avg, 1)

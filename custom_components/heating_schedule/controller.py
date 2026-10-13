@@ -59,7 +59,14 @@ from .const import (
 from .presence import RoomPresence, entity_present
 from .profile import DAY_NAMES, SLOT, SLOTS_PER_DAY, Profile, floor_slot, occupancy_slots
 from .schedule import DAYS, Slot, current_slot, normalize_schedule, temperature_at
-from .stats import HEATUP_LOOKBACK, Sample, ThermostatStats, deviation_slots, heatup_runs
+from .stats import (
+    HEATUP_LOOKBACK,
+    MANUAL_MIN_HOLD,
+    Sample,
+    ThermostatStats,
+    deviation_slots,
+    heatup_runs,
+)
 from .store import ScheduleStore
 from .suggest import (
     AI_VISIBLE,
@@ -405,12 +412,14 @@ class ScheduleController:
         if "recorder" not in self.hass.config.components:
             return
         async with self._profile_lock:
-            end = floor_slot(dt_util.utcnow())
+            # Slots are folded in once a target set in them has had time to be corrected.
+            now = dt_util.utcnow()
+            end = floor_slot(now - MANUAL_MIN_HOLD)
             start = self.stats.last_sample or end - timedelta(days=PROFILE_BACKFILL_DAYS)
             start = dt_util.as_utc(start)
             if end - start < SLOT:
                 return
-            samples = await self._async_climate_history(start - HEATUP_LOOKBACK, end)
+            samples = await self._async_climate_history(start - HEATUP_LOOKBACK, now)
             deviations = 0
             if self.enabled:
                 limits, days = self.limits(), self.days

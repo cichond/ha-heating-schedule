@@ -6,6 +6,9 @@ tested in isolation.
 - **Manual deviations:** per weekday and 15-minute slot, how far the target
   temperature in force was from the schedule (someone turned it up or down).
   Running average like the occupancy profile: roughly the last eight weeks.
+  Targets that held for less than ``MANUAL_MIN_HOLD`` (a typo corrected a
+  moment later, testing a thermostat) are ignored, and one slot moves the
+  average by at most ``MANUAL_CLIP`` degrees.
 - **Heat-up runs:** how long the room took to reach a raised target, so a
   schedule can start heating early enough.
 """
@@ -25,6 +28,9 @@ WINDOW = 8  # weeks, as the occupancy profile
 
 MIN_KNOWN_SHARE = 0.5  # a slot counts when the thermostat heated for at least half of it
 MANUAL_THRESHOLD = 0.25  # |deviation| from which a slot counts as manually changed
+MANUAL_MIN_HOLD = timedelta(minutes=30)  # shorter-lived targets are ignored
+MANUAL_CLIP = 3.0  # degrees; a larger deviation counts as this much
+STATS_VERSION = 2  # 1: short-lived targets were counted; the manual statistics are dropped
 
 HEATUP_MIN_RISE = 1.0  # target raised by at least this, and the room this far below it
 HEATUP_REACHED = 0.5  # reached once the room is within this of the target
@@ -55,6 +61,24 @@ def _slot_index(moment: datetime) -> int:
     return (moment.hour * 60 + moment.minute) // SLOT_MINUTES
 
 
+def _lasting(samples: Sequence[Sample]) -> list[Sample]:
+    """The samples with an unknown target wherever that target held < ``MANUAL_MIN_HOLD``.
+
+    The last target is kept: it is still in force.
+    """
+    result = list(samples)
+    i = 0
+    while i < len(samples):
+        j = i + 1
+        while j < len(samples) and samples[j].target == samples[i].target:
+            j += 1
+        if j < len(samples) and samples[j].time - samples[i].time < MANUAL_MIN_HOLD:
+            for k in range(i, j):
+                result[k] = Sample(samples[k].time, samples[k].heating, None, samples[k].current)
+        i = j
+    return result
+
+
 def deviation_slots(
     samples: Sequence[Sample],
     start: datetime,
@@ -67,8 +91,10 @@ def deviation_slots(
     before the first. ``start`` must be on a slot boundary. Pass UTC datetimes:
     aware local-time arithmetic is wall-clock and breaks across DST. Slots in
     which the thermostat heated with a known target for less than half the
-    time are skipped.
+    time are skipped, and so are targets that held for less than
+    ``MANUAL_MIN_HOLD`` (pass samples until at least that long after ``end``).
     """
+    samples = _lasting(samples)
     result: list[tuple[datetime, float]] = []
     slot = start
     k = 0
@@ -98,8 +124,14 @@ def heatup_runs(samples: Sequence[Sample]) -> list[HeatupRun]:
     """Completed heat-ups: target raised by >= 1 degree until the room is within 0.5 of it.
 
     A run is dropped when the target changes again, heating stops, or it takes
-    longer than ``HEATUP_MAX``.
+    longer than ``HEATUP_MAX``. Targets that held for less than
+    ``MANUAL_MIN_HOLD`` are left out, so a corrected typo does not end a run.
     """
+    samples = [
+        sample
+        for sample, lasting in zip(samples, _lasting(samples), strict=True)
+        if lasting.target is not None or sample.target is None
+    ]
     runs: list[HeatupRun] = []
     run: tuple[datetime, float, float] | None = None  # start, target, degrees
     previous: float | None = None
@@ -144,6 +176,7 @@ class ManualStats:
         day, slot = slot_start.weekday(), _slot_index(slot_start)
         self.count[day][slot] += 1
         weight = max(1 / self.count[day][slot], 1 / WINDOW)
+        deviation = max(-MANUAL_CLIP, min(MANUAL_CLIP, deviation))
         changed = 1.0 if abs(deviation) >= MANUAL_THRESHOLD else 0.0
         self.avg[day][slot] = round(
             self.avg[day][slot] + weight * (deviation - self.avg[day][slot]), 4
@@ -206,15 +239,22 @@ class ThermostatStats:
 
     def __init__(self, data: dict[str, Any] | None = None) -> None:
         data = data or {}
-        self.manual = ManualStats(data.get("manual"))
+        current = data.get("version") == STATS_VERSION
+        # Older manual statistics (and the suggestions made from them) are dropped,
+        # not rebuilt: the history may come from before the schedule was enabled.
+        self.manual = ManualStats(data.get("manual") if current else None)
         self.heatup = HeatupStats(data.get("heatup"))
         last = data.get("last_sample")
         self.last_sample: datetime | None = datetime.fromisoformat(last) if last else None
         # Schedule suggestions: queue, dismissed keys, last analysis, quiet period.
         self.suggestions: dict[str, Any] = data.get("suggestions") or {}
+        if not current:
+            self.suggestions.pop("queue", None)
+            self.suggestions.pop("ai_queue", None)
 
     def as_dict(self) -> dict[str, Any]:
         return {
+            "version": STATS_VERSION,
             "manual": self.manual.as_dict(),
             "heatup": self.heatup.as_dict(),
             "last_sample": self.last_sample.isoformat() if self.last_sample else None,

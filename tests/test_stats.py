@@ -30,10 +30,29 @@ def s(when: datetime, target: float | None, current: float | None = 20, heating:
 
 
 def test_deviation_time_weighted_per_slot() -> None:
-    samples = [s(t(7, 50), 21), s(t(8, 5), 23), s(t(8, 20), 21)]
-    slots = dict(stats.deviation_slots(samples, t(8, 0), t(8, 30), lambda _slot: 21))
-    # 8:00-8:15: 5 min at +0, 10 min at +2; 8:15-8:30: 5 min at +2, 10 min at +0
-    assert slots == {t(8, 0): round(20 / 15, 4), t(8, 15): round(10 / 15, 4)}
+    samples = [s(t(7, 30), 21), s(t(8, 5), 23), s(t(8, 35), 21)]
+    slots = dict(stats.deviation_slots(samples, t(8, 0), t(8, 45), lambda _slot: 21))
+    # 8:00-8:15: 5 min at +0, 10 min at +2; 8:15-8:30: +2; 8:30-8:45: 5 min at +2, 10 at +0
+    assert slots == {t(8, 0): round(20 / 15, 4), t(8, 15): 2.0, t(8, 30): round(10 / 15, 4)}
+
+
+def test_deviation_ignores_short_lived_targets() -> None:
+    # 30 degrees by mistake, corrected after 10 minutes; then testing 23/24/22 for a while
+    samples = [
+        s(t(7, 0), 21),
+        s(t(8, 0), 30),
+        s(t(8, 10), 21),
+        s(t(9, 0), 23),
+        s(t(9, 10), 24),
+        s(t(9, 25), 22),
+        s(t(9, 40), 21),
+    ]
+    slots = dict(stats.deviation_slots(samples, t(8, 0), t(10, 0), lambda _slot: 21))
+    assert all(dev == 0.0 for dev in slots.values())
+    assert t(9, 15) not in slots  # unknown for the whole slot
+    # The target in force at the end of the history is kept.
+    tail = stats.deviation_slots([s(t(7, 0), 21), s(t(8, 0), 23)], t(8, 0), t(8, 15), lambda _: 21)
+    assert tail == [(t(8, 0), 2.0)]
 
 
 def test_deviation_skips_slots_mostly_off_or_unknown() -> None:
@@ -63,6 +82,9 @@ def test_manual_stats_average_and_share() -> None:
     assert manual.avg[day][slot] == 1.0
     assert manual.share[day][slot] == 0.5
     assert manual.weeks() == 2
+
+    manual.add(t(9, 0), 9.0)  # 30 degrees instead of 21 counts as +3
+    assert manual.avg[day][36] == stats.MANUAL_CLIP
 
     manual.reset(day, [slot])
     assert manual.count[day][slot] == 0
@@ -96,6 +118,18 @@ def test_heatup_interrupted_runs_are_dropped() -> None:
         s(t(8, 5), 21, 20),  # +2 but never reached
     ]
     assert stats.heatup_runs(samples) == []
+
+
+def test_heatup_survives_a_corrected_typo() -> None:
+    samples = [
+        s(t(5, 0), 19, 19),
+        s(t(6, 0), 21, 19),
+        s(t(6, 10), 30, 19),  # five minutes at 30 degrees
+        s(t(6, 15), 21, 19.5),
+        s(t(7, 0), 21, 20.5),
+    ]
+    # Both short-lived targets are left out: the run starts at 6:15.
+    assert stats.heatup_runs(samples) == [stats.HeatupRun(t(6, 15), 45.0, 1.5)]
 
 
 def test_heatup_ignores_small_rises_and_already_warm_rooms() -> None:
@@ -143,6 +177,16 @@ def test_thermostat_stats_round_trip() -> None:
     assert again.as_dict() == data.as_dict()
     assert again.last_sample == t(9, 0)
     assert stats.ThermostatStats(None).last_sample is None
+
+    # Version 1 statistics: the manual part and the suggestion queues are dropped.
+    old = data.as_dict()
+    del old["version"]
+    old["suggestions"] = {"queue": [{}], "ai_queue": [{}], "dismissed": {"k": "x"}}
+    migrated = stats.ThermostatStats(old)
+    assert migrated.manual.weeks() == 0
+    assert migrated.suggestions == {"dismissed": {"k": "x"}}
+    assert migrated.heatup.runs == data.heatup.runs
+    assert migrated.last_sample == t(9, 0)
 
 
 def test_window_start_spans_dst() -> None:
