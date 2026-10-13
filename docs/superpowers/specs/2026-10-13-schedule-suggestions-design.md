@@ -29,8 +29,10 @@ zauważyć i zaproponować harmonogram bliższy temu, co faktycznie się ustawia
    termostatu. Przykład: harmonogram 21°, syn ustawia 23°, sugestia 22,5° (albo 22°/23° przy kroku 1°).
    Działa w obie strony: stałe skręcanie temperatury prowadzi do sugestii obniżenia.
 4. **AI (opcjonalnie):** przez `ai_task` w HA (u użytkownika `ai_task.openai_ai_task`).
-   - **Nowy termostat:** po dodaniu termostatu w panelu AI proponuje cały harmonogram na podstawie typu
-     pokoju i danych obecności, jeśli są. Użytkownik zatwierdza (decyzja).
+   - **Nowy termostat:** w okienku dodawania termostatu w panelu użytkownik **wybiera**: pusty harmonogram
+     (jak dziś) albo inicjalizacja z AI (decyzja). Przy wyborze AI integracja proponuje cały harmonogram na
+     podstawie typu pokoju i danych obecności, jeśli są, a użytkownik go zatwierdza (decyzja). Bez AI w HA
+     opcji „z AI” nie ma. (Moja decyzja:) do czasu zatwierdzenia termostat ma pusty harmonogram.
    - **Na żądanie:** ikona `ai_task` na karcie wysyła zapytanie. Propozycje AI trafiają na **tę samą listę
      sugestii** z „Zastosuj” i „Odrzuć” (decyzja).
    - **Bez AI w HA:** nie ma sugestii zależnych od typu pokoju ani harmonogramu dla nowego termostatu.
@@ -42,8 +44,8 @@ zauważyć i zaproponować harmonogram bliższy temu, co faktycznie się ustawia
 - Bez powiadomień. Sugestie widać tylko w panelu Ogrzewanie (decyzja).
 - Bez uzasadnień przy sugestiach. Lista pokazuje tylko opis zmiany (decyzja).
 - Typ pokoju nigdzie nie jest pokazywany ani edytowalny (decyzja).
-- AI nie jest odpytywane samo z siebie. Wyjątek: jedno zapytanie przy dodaniu nowego termostatu
-  (moja decyzja; decyzja użytkownika to „AI proponuje przy nowym termostacie”).
+- AI nie jest odpytywane samo z siebie. Zapytanie idzie tylko po kliknięciu ikony AI albo po wybraniu
+  „z AI” przy dodawaniu termostatu (decyzja).
 - Bez wpisywanego ręcznie czasu nagrzewania.
 
 ## Antycele: co by sprawiło, że użytkownik to wyłączy
@@ -139,7 +141,7 @@ Na karcie, tylko w trybie podglądu:
   `min_temp`/`max_temp`/krok termostatu, poprawny harmonogram (pierwszy punkt 00:00). Propozycje
   niespełniające filtrów są po cichu pomijane.
 - **Prywatność i koszt:** dane obecności idą do dostawcy AI tylko przy zapytaniu, czyli po kliknięciu
-  albo przy dodaniu termostatu.
+  albo przy dodaniu termostatu z opcją „z AI”.
 - Integracja w Pythonie, karta i panel w Lit/TypeScript. Testy: pytest (pytest-homeassistant-custom-component)
   i node:test dla czystej logiki. CI na GitHubie, wydania przez tag i HACS.
 - **Logika analizy jako czyste funkcje bez importów HA**, testowalne osobno, jak `profile.py` i `schedule.py`.
