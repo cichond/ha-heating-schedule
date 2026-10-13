@@ -40,7 +40,13 @@ po kontekście by nie działało. Odchylenie jest odporne na to i nie wymaga rej
 4. **`as_dict`:** dochodzi `stats` (`manual_weeks`, `heatup_runs`, `heatup_minutes_per_degree`).
 5. **Testy:** `tests/test_stats.py` (czyste) i `tests/test_stats_recorder.py` (recorder).
 
-## Etap 2 (0.11.0): analizator sugestii (backend)
+## Etap 2 (0.11.0): analizator sugestii (backend) (wydane 2026-10-13)
+
+Jak zbudowane: `suggest.py` (czyste funkcje). Każda sugestia to jedna operacja „ustaw [start, end) na
+temp” dla kilku dni, a `expect` to temperatury wokół zmiany. Dzięki temu zastosowanie jednej sugestii nie
+unieważnia innej w innej części dnia. Stan sugestii jest w `.storage/heating_schedule.stats` (pole
+`suggestions`). Analiza sprawdzana jest w godzinnym cyklu, a wykonuje się raz na 7 dni i poza przerwą po
+zmianie. Komendy websocket mają pole `suggestion_id`, bo `id` to numer komunikatu.
 
 1. **`suggest.py`** (czyste funkcje). Wejście: harmonogram, profil (może go nie być), `ManualStats`,
    `HeatupStats`, granice termostatu (`min`/`max`/`step`), lista odrzuceń, teraz. Wyjście: uszeregowana
