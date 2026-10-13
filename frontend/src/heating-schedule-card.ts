@@ -1,5 +1,5 @@
 import { LitElement, css, html, nothing, svg, type PropertyValues } from "lit";
-import { customElement, property, state } from "lit/decorators.js";
+import { property, state } from "lit/decorators.js";
 
 import { strings, type Strings } from "./i18n";
 import {
@@ -144,7 +144,6 @@ function isoDate(date: Date): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
-@customElement("heating-schedule-card")
 export class HeatingScheduleCard extends LitElement {
   @property({ attribute: false }) hass?: Hass;
 
@@ -162,6 +161,8 @@ export class HeatingScheduleCard extends LitElement {
   @state() private _saving = false;
   /** Minute under the pointer (view mode only): tooltip with the line values. */
   @state() private _hover?: number;
+  /** Touch: the tooltip stays a moment after the finger is lifted. */
+  private _hoverTimer?: number;
 
   private _unsub?: Promise<() => Promise<void>>;
   private _subscribeFailed = false;
@@ -227,6 +228,7 @@ export class HeatingScheduleCard extends LitElement {
     super.disconnectedCallback();
     this._unsubscribe();
     window.clearInterval(this._historyTimer);
+    window.clearTimeout(this._hoverTimer);
     this._resize?.disconnect();
   }
 
@@ -571,7 +573,7 @@ export class HeatingScheduleCard extends LitElement {
       @pointermove=${this._onPointerMove}
       @pointerup=${this._onPointerUp}
       @pointercancel=${this._onPointerUp}
-      @pointerleave=${() => (this._hover = undefined)}
+      @pointerleave=${this._onPointerLeave}
       @dblclick=${this._onDoubleClick}
     >
       <defs>
@@ -937,8 +939,15 @@ export class HeatingScheduleCard extends LitElement {
     if (kind === "seg") this._selected = index;
   }
 
+  private _onPointerLeave(ev: PointerEvent): void {
+    window.clearTimeout(this._hoverTimer);
+    if (ev.pointerType === "mouse") this._hover = undefined;
+    else this._hoverTimer = window.setTimeout(() => (this._hover = undefined), 3000);
+  }
+
   private _onHover(ev: PointerEvent): void {
     if (this._draft || !this._scale) return;
+    window.clearTimeout(this._hoverTimer);
     const minute = Math.round(this._scale.minute(this._local(ev)[0]) / 5) * 5;
     this._hover = minute < 0 || minute > DAY_MIN ? undefined : Math.min(minute, DAY_MIN - 1);
   }
@@ -1200,6 +1209,9 @@ export class HeatingScheduleCard extends LitElement {
       display: block;
       overflow: visible;
     }
+    .chart svg {
+      touch-action: pan-y; /* a horizontal swipe moves the tooltip, a vertical one scrolls */
+    }
     .chart.editing svg {
       touch-action: none;
     }
@@ -1360,6 +1372,10 @@ declare global {
   interface Window {
     customCards?: { type: string; name: string; description: string; preview?: boolean }[];
   }
+}
+
+if (!customElements.get("heating-schedule-card")) {
+  customElements.define("heating-schedule-card", HeatingScheduleCard);
 }
 
 window.customCards = window.customCards ?? [];

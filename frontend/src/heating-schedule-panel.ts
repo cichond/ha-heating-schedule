@@ -1,5 +1,5 @@
 import { LitElement, css, html, nothing, type PropertyValues } from "lit";
-import { customElement, property, state } from "lit/decorators.js";
+import { property, state } from "lit/decorators.js";
 
 import type { Hass, ScheduleInfo } from "./heating-schedule-card";
 import { strings, type Strings } from "./i18n";
@@ -44,7 +44,6 @@ async function loadHaForm(): Promise<void> {
 }
 
 /** Sidebar panel: every thermostat's schedule card, plus their settings. */
-@customElement("heating-schedule-panel")
 export class HeatingSchedulePanel extends LitElement {
   @property({ attribute: false }) hass?: Hass;
   @property({ type: Boolean }) narrow = false;
@@ -514,6 +513,11 @@ export class HeatingSchedulePanel extends LitElement {
       }
     }
   `;
+}
+
+// Guarded: a stale and a new copy of the bundle may both load after an update.
+if (!customElements.get("heating-schedule-panel")) {
+  customElements.define("heating-schedule-panel", HeatingSchedulePanel);
 }
 
 declare global {
