@@ -197,22 +197,7 @@ export class HeatingScheduleCard extends LitElement {
   private _range?: [number, number];
   private _scale?: Scale;
 
-  // -- Lovelace API -----------------------------------------------------------
-
-  static getConfigForm() {
-    return {
-      schema: [
-        { name: "entity", required: true, selector: { entity: { domain: "climate" } } },
-        { name: "name", selector: { text: {} } },
-        { name: "height", selector: { number: { min: 120, max: 600, mode: "box", unit_of_measurement: "px" } } },
-      ],
-    };
-  }
-
-  static getStubConfig(hass: Hass) {
-    const entity = Object.keys(hass.states).find((id) => id.startsWith("climate.")) ?? "";
-    return { entity };
-  }
+  // -- configuration (set by the panel) --------------------------------------
 
   setConfig(config: CardConfig): void {
     if (!config?.entity) throw new Error("entity is required");
@@ -226,14 +211,6 @@ export class HeatingScheduleCard extends LitElement {
       this._subscribeFailed = false;
     }
     this._config = config;
-  }
-
-  getCardSize(): number {
-    return 6;
-  }
-
-  getGridOptions() {
-    return { columns: 12, min_columns: 6, rows: "auto" };
   }
 
   // -- lifecycle --------------------------------------------------------------
@@ -1607,22 +1584,6 @@ export class HeatingScheduleCard extends LitElement {
   `;
 }
 
-declare global {
-  interface Window {
-    customCards?: { type: string; name: string; description: string; preview?: boolean }[];
-  }
-}
-
 if (!customElements.get("heating-schedule-card")) {
   customElements.define("heating-schedule-card", HeatingScheduleCard);
-}
-
-window.customCards = window.customCards ?? [];
-if (!window.customCards.some((card) => card.type === "heating-schedule-card")) {
-  window.customCards.push({
-    type: "heating-schedule-card",
-    name: "Heating Schedule",
-    description: "Weekly thermostat schedule as a temperature chart, editable by dragging.",
-    preview: true,
-  });
 }

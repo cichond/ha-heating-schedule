@@ -5,7 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 
 from homeassistant.components import panel_custom
-from homeassistant.components.frontend import add_extra_js_url
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import ATTR_TEMPERATURE, Platform
@@ -37,7 +36,7 @@ type HeatingScheduleConfigEntry = ConfigEntry[ScheduleController]
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
-    """Set up storage, the card, the websocket API and services."""
+    """Set up storage, the panel, the websocket API and services."""
     store = ScheduleStore(hass)
     await store.async_load()
     hass.data[DOMAIN] = store
@@ -51,8 +50,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         ]
     )
     module_url = f"{FRONTEND_URL_BASE}/{CARD_FILENAME}?v={integration.version}"
-    add_extra_js_url(hass, module_url)
-    # Sidebar panel with the cards of all thermostats (same module as the card).
+    # Sidebar panel with the cards of all thermostats; there is no dashboard card.
     await panel_custom.async_register_panel(
         hass,
         frontend_url_path=PANEL_URL,

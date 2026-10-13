@@ -1,6 +1,6 @@
 # Heating Schedule
 
-Weekly target-temperature schedules for Home Assistant thermostats, with a Lovelace card
+Weekly target-temperature schedules for Home Assistant thermostats, with a sidebar panel
 that shows each schedule as a temperature-over-time chart and lets you edit it by dragging.
 
 - One config entry per thermostat (`climate.*`).
@@ -54,7 +54,7 @@ weeks of profile, temperature suggestions three weeks of manual deviations. Afte
 there are no new suggestions for two weeks; a dismissed suggestion stays away for four weeks.
 
 On the cards of the sidebar panel each suggestion gets a numbered marker on the chart (the changed range
-is outlined) and a line under it with **Apply** / **Dismiss**. Dashboard cards do not show suggestions.
+is outlined) and a line under it with **Apply** / **Dismiss**.
 
 ### AI (optional)
 
@@ -76,7 +76,8 @@ green, the typical occupancy of the selected weekday (stronger = more often occu
 3. Settings → Devices & services → *Add integration* → **Heating Schedule**, pick a thermostat.
    Repeat for each thermostat.
 
-The card is served by the integration and loaded automatically; no dashboard resource is needed.
+The panel is served by the integration; no dashboard resource is needed. There is no dashboard card
+(removed in 0.14.0): the schedules live in the sidebar panel only.
 
 ## Sidebar panel
 
@@ -101,14 +102,7 @@ Attached to the thermostat's device:
 | `sensor.<thermostat>_scheduled_temperature` | target temperature the schedule asks for now; attributes `next_change`, `next_temperature` |
 | `binary_sensor.<thermostat>_occupancy` | only with room presence entities, see above |
 
-## Card
-
-```yaml
-type: custom:heating-schedule-card
-entity: climate.bedroom_thermostat
-# name: Bedroom         # optional (default: the name set in the panel)
-# height: 220           # optional, px
-```
+## Thermostat cards (in the panel)
 
 - Day tabs (Mon…Sun). The chart shows the schedule (step line), and for the most recent
   occurrence of that day the measured temperature and the actual target from history,
