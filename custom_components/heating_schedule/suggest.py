@@ -41,6 +41,8 @@ MANUAL_MIN_SLOTS = 2
 MANUAL_FOLLOW = 0.75  # move this far towards what people set
 DISMISS_DAYS = 28
 VISIBLE = 2
+AI_VISIBLE = 3
+MAX_POINTS = 8  # per day, in a proposed (AI) schedule
 
 Points = list[tuple[int, float]]  # (minute, temperature), sorted, first at 0
 
@@ -399,3 +401,98 @@ def _recent_dismissals(dismissed: Mapping[str, str], now: datetime | None) -> se
         return set(dismissed)
     cutoff = now - timedelta(days=DISMISS_DAYS)
     return {key for key, when in dismissed.items() if datetime.fromisoformat(when) > cutoff}
+
+
+# -- proposed schedules (AI) -------------------------------------------------------
+
+
+def validate_week(data: Any, limits: Limits) -> dict[str, list[dict[str, Any]]] | None:
+    """A proposed week made usable, or None.
+
+    Every day must be present; times are snapped to 15 minutes, temperatures to the
+    thermostat step and limits, the first point is moved to 00:00, and at most
+    ``MAX_POINTS`` points per day are kept.
+    """
+    if not isinstance(data, Mapping):
+        return None
+    week: dict[str, list[dict[str, Any]]] = {}
+    for day in DAY_NAMES:
+        raw = data.get(day)
+        if not isinstance(raw, Sequence) or isinstance(raw, str) or not raw:
+            return None
+        points: dict[int, float] = {}
+        for point in raw:
+            try:
+                hours, minutes = str(point["time"]).split(":")
+                minute = int(hours) * 60 + int(minutes)
+                temp = limits.fit(float(point["temp"]))
+            except (KeyError, TypeError, ValueError):
+                return None
+            if not 0 <= minute < DAY_MINUTES:
+                return None
+            points[round(minute / SLOT_MINUTES) * SLOT_MINUTES % DAY_MINUTES] = temp
+        ordered = sorted(points.items())
+        if ordered[0][0] != 0:
+            ordered.insert(0, (0, ordered[-1][1]))  # the night continues from the evening
+        merged: Points = []
+        for minute, temp in ordered:
+            if not merged or merged[-1][1] != temp:
+                merged.append((minute, temp))
+        if len(merged) > MAX_POINTS:
+            return None
+        week[day] = format_day(merged)
+    return week
+
+
+def suggestions_from_week(
+    days: Mapping[str, Sequence[Mapping[str, Any]]],
+    proposed: Mapping[str, Sequence[Mapping[str, Any]]],
+    limits: Limits,
+    *,
+    dismissed: Mapping[str, str] | None = None,
+    now: datetime | None = None,
+    limit: int = AI_VISIBLE,
+) -> list[Suggestion]:
+    """Turn the differences between a proposed week and the schedule into suggestions.
+
+    Each run of 15-minute slots with the same proposed temperature that differs
+    from the schedule becomes one change, subject to the usual thresholds
+    (30 minutes, 1 degree / the step). The same change on several days is one
+    suggestion; dismissed ones are skipped.
+    """
+    recent = _recent_dismissals(dismissed or {}, now)
+    threshold = max(MIN_TEMP_CHANGE, limits.step)
+    grouped: dict[tuple[Any, ...], Suggestion] = {}
+    for day in DAY_NAMES:
+        current, new = parse_day(days[day]), parse_day(proposed[day])
+        slots = [
+            (temp_at(current, m), temp_at(new, m)) for m in range(0, DAY_MINUTES, SLOT_MINUTES)
+        ]
+        slot = 0
+        while slot < SLOTS_PER_DAY:
+            old, value = slots[slot]
+            if old == value:
+                slot += 1
+                continue
+            run = slot
+            while run < SLOTS_PER_DAY and slots[run][1] == value and slots[run][0] != value:
+                run += 1
+            a, b = slot * SLOT_MINUTES, run * SLOT_MINUTES
+            deltas = [abs(value - o) for o, _ in slots[slot:run]]
+            if b - a >= MIN_SHIFT and max(deltas) >= threshold:
+                gain = (b - a) / 60 * sum(deltas) / len(deltas)
+                params = {"start": a, "end": b, "temp": value, "from_temp": old}
+                op = _op("temp", current, a, b, value, gain, params, f"ai:{a}:{b}:{value}")
+                key = f"{day}:{op.keys[0]}"
+                group = (a, b, value, tuple(op.expect))
+                if key in recent:
+                    pass
+                elif group in grouped:
+                    grouped[group].days.append(day)
+                    grouped[group].keys.append(key)
+                    grouped[group].gain += gain
+                else:
+                    op.days, op.keys, op.source = [day], [key], "ai"
+                    grouped[group] = op
+            slot = run
+    return sorted(grouped.values(), key=lambda s: s.gain, reverse=True)[:limit]

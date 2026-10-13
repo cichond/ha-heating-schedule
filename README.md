@@ -56,6 +56,16 @@ there are no new suggestions for two weeks; a dismissed suggestion stays away fo
 On the cards of the sidebar panel each suggestion gets a numbered marker on the chart (the changed range
 is outlined) and a line under it with **Apply** / **Dismiss**. Dashboard cards do not show suggestions.
 
+### AI (optional)
+
+With an [AI Task](https://www.home-assistant.io/integrations/ai_task/) entity in Home Assistant (the preferred
+one from its settings, else the first), the panel cards get an AI button: the integration sends the room
+(thermostat, area and floor names), the schedule, the hourly typical occupancy, frequent manual changes, the
+heat-up rate and the thermostat limits to `ai_task.generate_data` and turns the week it proposes into up to
+three suggestions (marked with the AI icon; same thresholds and dismissals as above). When adding a
+thermostat in the panel you can also choose **Proposed by the AI**: the thermostat starts with an empty
+schedule and the proposed week waits on its card for **Apply**. Nothing is sent to the AI unless you ask.
+
 Under the chart the card draws two strips: the actual presence of that day and, below it in a darker
 green, the typical occupancy of the selected weekday (stronger = more often occupied).
 
@@ -125,8 +135,9 @@ entity: climate.bedroom_thermostat
 
 `heating_schedule/list`, `heating_schedule/get`, `heating_schedule/save` (`entity_id`, `days?`, `enabled?`),
 `heating_schedule/subscribe` (`entity_id`; sends the schedule now and after every change),
-`heating_schedule/suggestion/apply` and `heating_schedule/suggestion/dismiss` (`entity_id`, `suggestion_id`).
-Admin only: `heating_schedule/add` (`entity_id`), `heating_schedule/configure` (`entity_id`, `title?`,
+`heating_schedule/suggestion/apply` and `heating_schedule/suggestion/dismiss` (`entity_id`, `suggestion_id`),
+`heating_schedule/suggestion/ask_ai` (`entity_id`, `full?`).
+Admin only: `heating_schedule/add` (`entity_id`, `init?`: `empty` / `ai`), `heating_schedule/configure` (`entity_id`, `title?`,
 `presence_entities?`), `heating_schedule/remove` (`entity_id`).
 
 ## Development

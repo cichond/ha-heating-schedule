@@ -6,6 +6,8 @@ import asyncio
 from collections.abc import Callable
 from datetime import datetime, timedelta
 from functools import partial
+import hashlib
+import json
 import logging
 import math
 from typing import Any
@@ -59,7 +61,16 @@ from .profile import DAY_NAMES, SLOT, SLOTS_PER_DAY, Profile, floor_slot, occupa
 from .schedule import DAYS, Slot, current_slot, normalize_schedule, temperature_at
 from .stats import HEATUP_LOOKBACK, Sample, ThermostatStats, deviation_slots, heatup_runs
 from .store import ScheduleStore
-from .suggest import DISMISS_DAYS, Limits, Suggestion, analyze, apply, visible
+from .suggest import (
+    AI_VISIBLE,
+    DISMISS_DAYS,
+    Limits,
+    Suggestion,
+    analyze,
+    apply,
+    suggestions_from_week,
+    visible,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -180,6 +191,8 @@ class ScheduleController:
                 }
                 for s in self.visible_suggestions()
             ],
+            "ai_available": self.ai_available,
+            "ai_full": self._ai_full(),
             "limits": self.limits(),
             "switch_entity": registry.async_get_entity_id(
                 "switch", DOMAIN, f"{self.entry.entry_id}_enabled"
@@ -449,11 +462,57 @@ class ScheduleController:
 
     # -- suggestions ----------------------------------------------------------
 
-    def _queue(self) -> list[Suggestion]:
-        return [Suggestion.from_dict(s) for s in self.stats.suggestions.get("queue", [])]
+    def _queue(self, name: str = "queue") -> list[Suggestion]:
+        return [Suggestion.from_dict(s) for s in self.stats.suggestions.get(name, [])]
 
     def visible_suggestions(self) -> list[Suggestion]:
-        return visible(self._queue(), self.days)
+        """Suggestions from the data (at most 2), then the AI's (at most 3)."""
+        return visible(self._queue(), self.days) + visible(
+            self._queue("ai_queue"), self.days, AI_VISIBLE
+        )
+
+    def _limits_for_suggestions(self) -> Limits:
+        limits = self.limits()
+        return Limits(limits["step"] or DEFAULT_STEP, limits["min"], limits["max"])
+
+    # -- AI -----------------------------------------------------------------
+
+    @property
+    def ai_available(self) -> bool:
+        from .ai import ai_entity
+
+        return ai_entity(self.hass) is not None
+
+    def _ai_full(self) -> dict[str, Any] | None:
+        """A whole proposed week, while the schedule is still the one it was proposed for."""
+        full = self.stats.suggestions.get("ai_full")
+        if not full or full.get("base") != self.days:
+            return None
+        return {"id": full["id"], "week": full["week"]}
+
+    async def async_ask_ai(self, *, full: bool = False) -> int:
+        """Ask the AI for suggestions (or a whole week); returns how many there are."""
+        from .ai import async_propose_week
+
+        week = await async_propose_week(self, full=full)
+        state = self.stats.suggestions
+        if full:
+            digest = hashlib.sha1(json.dumps(week, sort_keys=True).encode()).hexdigest()[:12]
+            state["ai_full"] = {"id": f"full-{digest}", "week": week, "base": self.days}
+            count = 1
+        else:
+            queue = suggestions_from_week(
+                self.days,
+                week,
+                self._limits_for_suggestions(),
+                dismissed=state.get("dismissed", {}),
+                now=dt_util.now(),
+            )
+            state["ai_queue"] = [s.as_dict() for s in queue]
+            count = len(queue)
+        self._save_stats()
+        self._notify()
+        return count
 
     @callback
     def async_analyze(self, force: bool = False) -> bool:
@@ -472,11 +531,10 @@ class ScheduleController:
             for key, when in state.get("dismissed", {}).items()
             if datetime.fromisoformat(when) > cutoff
         }
-        limits = self.limits()
         manual = self.stats.manual
         queue = analyze(
             self.days,
-            Limits(limits["step"] or DEFAULT_STEP, limits["min"], limits["max"]),
+            self._limits_for_suggestions(),
             occupancy=self.profile.avg if self.profile else None,
             occupancy_weeks=self.profile.weeks() if self.profile else 0,
             manual_avg=manual.avg,
@@ -496,6 +554,10 @@ class ScheduleController:
 
     async def async_apply_suggestion(self, suggestion_id: str) -> bool:
         """Apply a visible suggestion to the schedule; False if it no longer applies."""
+        if (full := self._ai_full()) and full["id"] == suggestion_id:
+            self.stats.suggestions.pop("ai_full", None)
+            await self.async_update(days=full["week"])
+            return True
         suggestion = next((s for s in self.visible_suggestions() if s.id == suggestion_id), None)
         if suggestion is None:
             return False
@@ -506,7 +568,14 @@ class ScheduleController:
     @callback
     def async_dismiss_suggestion(self, suggestion_id: str) -> bool:
         """Hide a suggestion; the same change is not suggested again for a while."""
-        suggestion = next((s for s in self._queue() if s.id == suggestion_id), None)
+        full = self.stats.suggestions.get("ai_full")
+        if full and full["id"] == suggestion_id:
+            self.stats.suggestions.pop("ai_full")
+            self._save_stats()
+            self._notify()
+            return True
+        queue = self._queue() + self._queue("ai_queue")
+        suggestion = next((s for s in queue if s.id == suggestion_id), None)
         if suggestion is None:
             return False
         now = dt_util.now().isoformat()
@@ -519,9 +588,10 @@ class ScheduleController:
 
     def _drop_from_queue(self, suggestion_id: str) -> None:
         state = self.stats.suggestions
-        state["queue"] = [
-            s for s in state.get("queue", []) if Suggestion.from_dict(s).id != suggestion_id
-        ]
+        for name in ("queue", "ai_queue"):
+            state[name] = [
+                s for s in state.get(name, []) if Suggestion.from_dict(s).id != suggestion_id
+            ]
 
     def _save_stats(self) -> None:
         self._store.set_stats(self.entry.entry_id, self.stats.as_dict())

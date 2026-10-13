@@ -190,15 +190,21 @@ export class HeatingSchedulePanel extends LitElement {
   private async _openAdd(): Promise<void> {
     await loadHaForm();
     this._dialogError = undefined;
-    this._dialog = { kind: "add", data: {} };
+    this._dialog = { kind: "add", data: { init: "empty" } };
   }
 
   private _close(): void {
     if (!this._busy) this._dialog = undefined;
   }
 
+  /** Any AI Task entity (the backend picks the preferred one). */
+  private get _aiAvailable(): boolean {
+    return Object.keys(this.hass?.states ?? {}).some((id) => id.startsWith("ai_task."));
+  }
+
   private _schema(dialog: Dialog) {
     if (dialog.kind === "add") {
+      const t = this._t;
       return [
         {
           name: "entity",
@@ -210,6 +216,22 @@ export class HeatingSchedulePanel extends LitElement {
             },
           },
         },
+        ...(this._aiAvailable
+          ? [
+              {
+                name: "init",
+                selector: {
+                  select: {
+                    mode: "list",
+                    options: [
+                      { value: "empty", label: t.init_empty },
+                      { value: "ai", label: t.init_ai },
+                    ],
+                  },
+                },
+              },
+            ]
+          : []),
       ];
     }
     return [
@@ -245,7 +267,8 @@ export class HeatingSchedulePanel extends LitElement {
     if (dialog.kind === "add") {
       const entity = dialog.data.entity as string | undefined;
       if (!entity) return;
-      this._run(() => hass.callWS({ type: "heating_schedule/add", entity_id: entity }));
+      const init = this._aiAvailable && dialog.data.init === "ai" ? "ai" : "empty";
+      this._run(() => hass.callWS({ type: "heating_schedule/add", entity_id: entity, init }));
       return;
     }
     const data = dialog.data;

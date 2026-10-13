@@ -81,6 +81,27 @@ export interface ScheduleInfo {
   sensor_entity: string | null;
   occupancy_entity: string | null;
   suggestions?: Suggestion[];
+  ai_available?: boolean;
+  /** A whole week proposed by the AI for a new thermostat. */
+  ai_full?: { id: string; week: Week } | null;
+}
+
+// Brand icons are served by Home Assistant with a short-lived token (as the HA frontend does).
+let brandsToken: Promise<string | null> | undefined;
+let brandsTokenAt = 0;
+
+function aiIconUrl(hass: Hass): Promise<string | null> {
+  if (!brandsToken || Date.now() - brandsTokenAt > 20 * 60 * 1000) {
+    brandsTokenAt = Date.now();
+    brandsToken = hass
+      .callWS<{ token: string }>({ type: "brands/access_token" })
+      .then((r) => r.token)
+      .catch(() => null);
+  }
+  const dark = (hass as { themes?: { darkMode?: boolean } }).themes?.darkMode;
+  return brandsToken.then((token) =>
+    token ? `/api/brands/integration/ai_task/${dark ? "dark_" : ""}icon.png?token=${token}` : null,
+  );
 }
 
 interface HistoryRow {
@@ -161,6 +182,9 @@ export class HeatingScheduleCard extends LitElement {
   @state() private _hover?: number;
   /** Suggestion being applied or dismissed. */
   @state() private _suggestBusy?: string;
+  @state() private _aiBusy = false;
+  @state() private _aiNote?: string;
+  @state() private _aiIcon?: string | null;
   /** Touch: the tooltip stays a moment after the finger is lifted. */
   private _hoverTimer?: number;
 
@@ -740,6 +764,40 @@ export class HeatingScheduleCard extends LitElement {
     return this._info?.suggestions ?? [];
   }
 
+  private get _aiFull() {
+    if (!this._config?.settings || this._draft) return undefined;
+    return this._info?.ai_full ?? undefined;
+  }
+
+  private _renderAiIcon(cls = "ai-icon") {
+    if (this._aiIcon === undefined && this.hass) {
+      this._aiIcon = null;
+      aiIconUrl(this.hass).then((url) => (this._aiIcon = url));
+    }
+    return this._aiIcon
+      ? html`<img class=${cls} src=${this._aiIcon} alt="AI" @error=${() => (this._aiIcon = null)} />`
+      : html`<ha-icon class=${cls} icon="mdi:creation"></ha-icon>`;
+  }
+
+  private async _askAi(): Promise<void> {
+    if (!this.hass || !this._config) return;
+    this._aiBusy = true;
+    this._aiNote = undefined;
+    try {
+      const result = await this.hass.callWS<{ count: number; info: ScheduleInfo }>({
+        type: "heating_schedule/suggestion/ask_ai",
+        entity_id: this._config.entity,
+      });
+      this._info = result.info;
+      if (!result.count) this._aiNote = this._t.ai_none;
+      this._error = undefined;
+    } catch (err: any) {
+      this._error = err?.message ?? String(err);
+    } finally {
+      this._aiBusy = false;
+    }
+  }
+
   private _renderSuggestionMarkers(
     pts: Pt[],
     x: (m: number) => number,
@@ -749,7 +807,14 @@ export class HeatingScheduleCard extends LitElement {
     const scale = this._scale;
     if (!scale) return nothing;
     const cy = (t: number) => y(clamp(t, scale.lo, scale.hi));
-    return this._suggestions.map((s, i) => {
+    const full = this._aiFull?.week[this._day];
+    const proposed = full ? toPts(full) : undefined;
+    const fullPath = proposed
+      ?.map((p, i) => (i ? `H${x(p.m)}V${cy(p.t)}` : `M${x(p.m)},${cy(p.t)}`))
+      .join("")
+      .concat(`H${x(DAY_MIN)}`);
+    const fullLine = fullPath ? svg`<path class="suggestion-full" d=${fullPath}></path>` : nothing;
+    return [fullLine, ...this._suggestions.map((s, i) => {
       if (!s.days.includes(this._day)) return nothing;
       const marker = markerOf(s);
       const before = tempAt(pts, s.start);
@@ -761,31 +826,39 @@ export class HeatingScheduleCard extends LitElement {
         <circle cx=${x(marker.m)} cy=${cy(marker.t) - 13} r="9"></circle>
         <text x=${x(marker.m)} y=${cy(marker.t) - 9} text-anchor="middle">${i + 1}</text>
       </g>`;
-    });
+    })];
   }
 
   private _renderSuggestions() {
     const list = this._suggestions;
-    if (!list.length) return nothing;
+    const full = this._aiFull;
     const t = this._t;
+    if (!list.length && !full) {
+      return this._aiNote ? html`<div class="suggestions"><div class="muted">${this._aiNote}</div></div>` : nothing;
+    }
     const temp = (value: number) => this._fmtTemp(value);
+    const buttons = (id: string) => html`<span class="buttons">
+      <button ?disabled=${!!this._suggestBusy} @click=${() => this._suggestion("dismiss", id)}>
+        ${t.suggest_dismiss}
+      </button>
+      <button class="primary" ?disabled=${!!this._suggestBusy} @click=${() => this._suggestion("apply", id)}>
+        ${t.suggest_apply}
+      </button>
+    </span>`;
     return html`<div class="suggestions">
+      ${full
+        ? html`<div class="suggestion-row">
+            ${this._renderAiIcon()}
+            <span class="text">${t.ai_full}</span>
+            ${buttons(full.id)}
+          </div>`
+        : nothing}
       ${list.map(
         (s, i) => html`<div class="suggestion-row">
           <span class="num">${i + 1}</span>
+          ${s.source === "ai" ? this._renderAiIcon("ai-icon small") : nothing}
           <span class="text">${describeSuggestion(s, this._info?.days, t, temp)}</span>
-          <span class="buttons">
-            <button ?disabled=${!!this._suggestBusy} @click=${() => this._suggestion("dismiss", s.id)}>
-              ${t.suggest_dismiss}
-            </button>
-            <button
-              class="primary"
-              ?disabled=${!!this._suggestBusy}
-              @click=${() => this._suggestion("apply", s.id)}
-            >
-              ${t.suggest_apply}
-            </button>
-          </span>
+          ${buttons(s.id)}
         </div>`,
       )}
     </div>`;
@@ -820,6 +893,17 @@ export class HeatingScheduleCard extends LitElement {
       </div>
       <div class="actions">
         <span class="spacer"></span>
+        ${this._config?.settings && this._info?.ai_available
+          ? html`<button
+              class="ai"
+              title=${this._t.ai_ask}
+              aria-label=${this._t.ai_ask}
+              ?disabled=${this._aiBusy}
+              @click=${this._askAi}
+            >
+              ${this._renderAiIcon()} ${this._aiBusy ? this._t.ai_busy : nothing}
+            </button>`
+          : nothing}
         <button class="primary" @click=${this._startEdit}>${this._t.edit}</button>
       </div>
     `;
@@ -1217,6 +1301,28 @@ export class HeatingScheduleCard extends LitElement {
     .suggestion-row .text {
       flex: 1 1 12em;
       min-width: 0;
+    }
+    .suggestion-full {
+      fill: none;
+      stroke: var(--hs-suggest);
+      stroke-width: 2;
+      stroke-dasharray: 5 3;
+    }
+    .ai-icon {
+      width: 20px;
+      height: 20px;
+      --mdc-icon-size: 20px;
+      flex: none;
+    }
+    .ai-icon.small {
+      width: 16px;
+      height: 16px;
+      --mdc-icon-size: 16px;
+    }
+    button.ai {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
     }
     .suggestion-row .buttons {
       display: flex;

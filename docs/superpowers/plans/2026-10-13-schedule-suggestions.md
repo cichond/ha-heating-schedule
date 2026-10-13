@@ -110,6 +110,15 @@ zmianie. Komendy websocket mają pole `suggestion_id`, bo `id` to numer komunika
 
 ## Etap 4 (0.13.0): AI
 
+Jak zbudowane: `ai.py` buduje polecenie i woła `ai_task.generate_data` z jednym polem tekstowym
+`schedule` (JSON tygodnia). Wybrałem pole tekstowe, bo selektor obiektu nie działa u wszystkich
+dostawców AI. Odpowiedź przechodzi przez `suggest.validate_week`, a różnice względem harmonogramu
+zamienia na sugestie `suggest.suggestions_from_week` (rodzaj `temp`, źródło `ai`, najwyżej 3).
+Propozycja całego tygodnia trafia do `ai_full` i jest ważna, dopóki harmonogram się nie zmieni. Ikona
+pochodzi z `/api/brands/integration/ai_task/(dark_)icon.png` z tokenem z `brands/access_token`, zapasowo
+`mdi:creation`. Panel pokazuje wybór „Pusty / Zaproponowany przez AI”, gdy istnieje jakakolwiek encja
+`ai_task.*`.
+
 1. **Wybór encji:** domyślna encja `ai_task` z ustawień HA (preferencje `ai_task`), w przeciwnym razie
    pierwsza dostępna. `as_dict` dostaje `ai_available: bool`.
 2. **`ai.py`:**

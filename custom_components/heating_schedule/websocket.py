@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import asyncio
+import logging
 from typing import Any
 
 from homeassistant.components import websocket_api
 from homeassistant.config_entries import SOURCE_USER
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.data_entry_flow import FlowResultType
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 import voluptuous as vol
@@ -21,6 +24,8 @@ from .const import (
 from .controller import ScheduleController, async_find_controller, async_find_entry
 from .schedule import ScheduleError
 
+_LOGGER = logging.getLogger(__name__)
+
 
 @callback
 def async_register_websocket(hass: HomeAssistant) -> None:
@@ -31,6 +36,7 @@ def async_register_websocket(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_configure)
     websocket_api.async_register_command(hass, ws_suggestion_apply)
     websocket_api.async_register_command(hass, ws_suggestion_dismiss)
+    websocket_api.async_register_command(hass, ws_suggestion_ask_ai)
     websocket_api.async_register_command(hass, ws_add)
     websocket_api.async_register_command(hass, ws_remove)
 
@@ -146,7 +152,11 @@ def ws_configure(
 
 @websocket_api.require_admin
 @websocket_api.websocket_command(
-    {vol.Required("type"): f"{DOMAIN}/add", vol.Required("entity_id"): cv.entity_domain("climate")}
+    {
+        vol.Required("type"): f"{DOMAIN}/add",
+        vol.Required("entity_id"): cv.entity_domain("climate"),
+        vol.Optional("init", default="empty"): vol.In(["empty", "ai"]),
+    }
 )
 @websocket_api.async_response
 async def ws_add(
@@ -159,7 +169,23 @@ async def ws_add(
     if result["type"] is not FlowResultType.CREATE_ENTRY:
         connection.send_error(msg["id"], result.get("reason", "failed"), str(result.get("reason")))
         return
+    if msg["init"] == "ai":
+        hass.async_create_task(_async_init_with_ai(hass, msg["entity_id"]))
     connection.send_result(msg["id"], {"entry_id": result["result"].entry_id})
+
+
+async def _async_init_with_ai(hass: HomeAssistant, climate_entity: str) -> None:
+    """Propose a whole week for a new thermostat once its entry is loaded."""
+    for _ in range(60):
+        if (controller := async_find_controller(hass, climate_entity)) is not None:
+            break
+        await asyncio.sleep(0.5)
+    else:
+        return
+    try:
+        await controller.async_ask_ai(full=True)
+    except HomeAssistantError as err:
+        _LOGGER.warning("AI schedule for %s failed: %s", climate_entity, err)
 
 
 @websocket_api.require_admin
@@ -218,3 +244,29 @@ def ws_suggestion_dismiss(
         connection.send_error(msg["id"], "not_found", "Unknown suggestion")
         return
     connection.send_result(msg["id"])
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/suggestion/ask_ai",
+        vol.Required("entity_id"): cv.entity_id,
+        vol.Optional("full", default=False): bool,
+    }
+)
+@websocket_api.async_response
+async def ws_suggestion_ask_ai(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Ask the AI for suggestions (anyone with access to the panel)."""
+    if (controller := async_find_controller(hass, msg["entity_id"])) is None:
+        connection.send_error(msg["id"], "not_found", f"No schedule for {msg['entity_id']}")
+        return
+    if not controller.ai_available:
+        connection.send_error(msg["id"], "ai_unavailable", "No AI Task entity is available")
+        return
+    try:
+        count = await controller.async_ask_ai(full=msg["full"])
+    except HomeAssistantError as err:
+        connection.send_error(msg["id"], "ai_failed", str(err))
+        return
+    connection.send_result(msg["id"], {"count": count, "info": controller.as_dict()})

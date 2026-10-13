@@ -191,3 +191,48 @@ def test_round_trip() -> None:
     again = suggest.Suggestion.from_dict(result[0].as_dict())
     assert again.id == result[0].id
     assert again.as_dict() == result[0].as_dict()
+
+
+def test_validate_week() -> None:
+    limits = suggest.Limits(1.0, 7, 30)
+    raw = {
+        name: [
+            {"time": "06:07", "temp": 21.4},
+            {"time": "22:00", "temp": 18},
+            {"time": "23:00", "temp": 40},
+        ]
+        for name in NAMES
+    }
+    week_ok = suggest.validate_week(raw, limits)
+    # snapped to 15 min and the step, clamped, first point at 00:00 (continuing the evening)
+    assert week_ok["mon"] == day(("00:00", 30.0), ("06:00", 21.0), ("22:00", 18.0), ("23:00", 30.0))
+    assert suggest.validate_week({**raw, "sun": []}, limits) is None
+    assert suggest.validate_week({"mon": raw["mon"]}, limits) is None
+    assert suggest.validate_week({**raw, "tue": [{"time": "xx", "temp": 1}]}, limits) is None
+    assert suggest.validate_week("not a week", limits) is None
+    many = [{"time": f"{h:02d}:00", "temp": 18 + h % 2} for h in range(12)]
+    assert suggest.validate_week({**raw, "wed": many}, limits) is None
+
+
+def test_suggestions_from_a_proposed_week() -> None:
+    proposed = week(day(("00:00", 18), ("09:00", 21), ("16:00", 18), ("20:30", 20)))
+    proposed["sat"] = OFFICE  # no change on the weekend
+    proposed["sun"] = OFFICE
+    result = suggest.suggestions_from_week(week(OFFICE), proposed, STEP1)
+    assert [(hm(s.start), hm(s.end), s.temp, s.source) for s in result] == [
+        ("16:00", "17:30", 18.0, "ai"),  # 1.5 h x 3 degrees
+        ("08:30", "09:00", 18.0, "ai"),
+    ]
+    assert result[0].days == ["mon", "tue", "wed", "thu", "fri"]
+    applied = suggest.apply(result[0], week(OFFICE))
+    assert applied["mon"] == day(("00:00", 18), ("08:30", 21), ("16:00", 18), ("20:30", 20))
+
+    # small differences (15 minutes) are no suggestions
+    close = week(day(("00:00", 18), ("08:45", 21), ("17:30", 18), ("20:30", 20)))
+    assert suggest.suggestions_from_week(week(OFFICE), close, STEP1) == []
+
+    dismissed = {key: NOW.isoformat() for key in result[0].keys}
+    again = suggest.suggestions_from_week(
+        week(OFFICE), proposed, STEP1, dismissed=dismissed, now=NOW
+    )
+    assert result[0].id not in [s.id for s in again]

@@ -50,6 +50,10 @@
     { id: "s1", kind: "shift", days: WD, start: 480, end: 510, temp: 19, params: { from: 510, to: 480, temp: 19 }, source: "data" },
     { id: "s2", kind: "shift", days: WD, start: 1140, end: 1200, temp: 19, params: { from: 1140, to: 1200, temp: 21 }, source: "data" },
   ];
+  // ?ai: an AI Task entity exists; ?aifull: a whole week proposed by the AI
+  if (params.has("ai")) info.ai_available = true;
+  if (params.has("aifull")) info.ai_full = { id: "full-1", week: Object.fromEntries(Object.keys(days).map(d =>
+    [d, [{time:"00:00",temp:18},{time:"06:00",temp:21},{time:"09:00",temp:18},{time:"18:30",temp:21},{time:"22:30",temp:18}]])) };
   const subs = [];
   const midnight = new Date(); midnight.setHours(0,0,0,0);
   function history(start) {
@@ -76,6 +80,12 @@
           "binary_sensor.sypialnia_termostat_obecnosc": [{ s: "on", lu: t0 }, { s: "off", lu: t0 + 6.6 * 3600 }, { s: "on", lu: t0 + 7 * 3600 }, { s: "off", lu: t0 + 8.4 * 3600 }] };
       }
       if (msg.type === "heating_schedule/save") { info = { ...info, ...(msg.days ? { days: msg.days } : {}), ...(msg.enabled !== undefined ? { enabled: msg.enabled } : {}) }; subs.forEach(cb => cb(info)); window.lastSave = msg; return info; }
+      if (msg.type === "brands/access_token") return { token: "dev" };
+      if (msg.type === "heating_schedule/suggestion/ask_ai") {
+        info = { ...info, suggestions: [...(info.suggestions ?? []),
+          { id: "a1", kind: "temp", days: WD, start: 1320, end: 1440, temp: 18, params: { start: 1320, end: 1440, temp: 18, from_temp: 19 }, source: "ai" }] };
+        return { count: 1, info };
+      }
       if (msg.type.startsWith("heating_schedule/suggestion/")) {
         info = { ...info, suggestions: info.suggestions.filter((x) => x.id !== msg.suggestion_id) };
         subs.forEach(cb => cb(info)); window.lastSuggestion = msg; return msg.type.endsWith("apply") ? info : null;
@@ -94,7 +104,7 @@
   }
   for (const cfg of params.has("panel") ? [] : [{ entity: "climate.sypialnia_termostat" }]) {
     const card = document.createElement("heating-schedule-card");
-    card.setConfig({ type: "custom:heating-schedule-card", settings: params.has("suggest"), ...cfg });
+    card.setConfig({ type: "custom:heating-schedule-card", settings: params.has("suggest") || params.has("ai") || params.has("aifull"), ...cfg });
     card.hass = hass;
     document.getElementById("cards").append(card);
   }
