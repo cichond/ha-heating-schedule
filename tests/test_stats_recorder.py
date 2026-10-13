@@ -111,11 +111,11 @@ async def test_no_deviations_while_disabled(
     recorder_mock, hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
     await hass.config.async_set_time_zone("Europe/Warsaw")
-    start = dt_util.now().replace(hour=5, minute=45, second=0, microsecond=0)
+    start = dt_util.now().replace(hour=5, minute=30, second=0, microsecond=0)
     await _record(hass, freezer, start, 19, 19)
-    await _record(hass, freezer, start + timedelta(minutes=15), 21, 19)
-    await _record(hass, freezer, start + timedelta(minutes=55), 21, 20.5)
-    freezer.move_to(start + timedelta(minutes=75, seconds=30))
+    await _record(hass, freezer, start + timedelta(minutes=30), 21, 19)
+    await _record(hass, freezer, start + timedelta(minutes=70), 21, 20.5)
+    freezer.move_to(start + timedelta(minutes=90, seconds=30))
 
     entry = await _setup(hass, enabled=False)
     controller = entry.runtime_data
