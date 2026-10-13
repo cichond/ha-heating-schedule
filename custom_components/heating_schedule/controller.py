@@ -21,6 +21,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     ATTR_ENTITY_ID,
     ATTR_TEMPERATURE,
+    STATE_OFF,
     STATE_UNAVAILABLE,
     STATE_UNKNOWN,
 )
@@ -54,13 +55,15 @@ from .const import (
     signal_updated,
 )
 from .presence import RoomPresence, entity_present
-from .profile import DAY_NAMES, Profile, floor_slot, occupancy_slots
-from .schedule import Slot, current_slot, normalize_schedule
+from .profile import DAY_NAMES, SLOT, SLOTS_PER_DAY, Profile, floor_slot, occupancy_slots
+from .schedule import DAYS, Slot, current_slot, normalize_schedule, temperature_at
+from .stats import HEATUP_LOOKBACK, Sample, ThermostatStats, deviation_slots, heatup_runs
 from .store import ScheduleStore
 
 _LOGGER = logging.getLogger(__name__)
 
 PROFILE_FIRST_UPDATE = 60  # seconds after start
+ATTR_CURRENT_TEMPERATURE = "current_temperature"
 
 
 class ScheduleController:
@@ -97,6 +100,8 @@ class ScheduleController:
         self.profile = self._load_profile() if self.presence_entities else None
         if not self.presence_entities:
             self._store.remove_profile(self.entry.entry_id)  # presence removed: drop its data
+        # Manual deviations and heat-up runs, for schedule suggestions (always collected).
+        self.stats = ThermostatStats(self._store.get_stats(self.entry.entry_id))
 
     # -- data ---------------------------------------------------------------
 
@@ -154,6 +159,11 @@ class ScheduleController:
                 if self.profile
                 else None
             ),
+            "stats": {
+                "manual_weeks": self.stats.manual.weeks(),
+                "heatup_runs": len(self.stats.heatup.runs),
+                "heatup_minutes_per_degree": self.stats.heatup.minutes_per_degree(),
+            },
             "limits": self.limits(),
             "switch_entity": registry.async_get_entity_id(
                 "switch", DOMAIN, f"{self.entry.entry_id}_enabled"
@@ -180,6 +190,7 @@ class ScheduleController:
         item = dict(self._item)
         if days is not None:
             item["days"] = normalize_schedule(days)
+            self._forget_changed_slots(self.days, item["days"])
         if enabled is not None:
             item["enabled"] = enabled
         old_temp = self.effective()
@@ -234,13 +245,12 @@ class ScheduleController:
     async def _async_started(self, _hass: HomeAssistant) -> None:
         if self.enabled:
             await self.async_apply()
-        if self.profile is not None:
-            self.entry.async_on_unload(
-                async_call_later(self.hass, PROFILE_FIRST_UPDATE, self._async_profile_tick)
-            )
-            self.entry.async_on_unload(
-                async_track_time_change(self.hass, self._async_profile_tick, minute=2, second=0)
-            )
+        self.entry.async_on_unload(
+            async_call_later(self.hass, PROFILE_FIRST_UPDATE, self._async_history_tick)
+        )
+        self.entry.async_on_unload(
+            async_track_time_change(self.hass, self._async_history_tick, minute=2, second=0)
+        )
 
     @callback
     def _reschedule(self) -> None:
@@ -298,13 +308,12 @@ class ScheduleController:
     def _fit(temp: float, state: State) -> float:
         """Round to the thermostat step and clamp to its limits."""
         attrs = state.attributes
-        step = attrs.get(ATTR_TARGET_TEMP_STEP) or DEFAULT_STEP
-        value = round(round(temp / step) * step, 2)
-        if (low := attrs.get(ATTR_MIN_TEMP)) is not None:
-            value = max(value, math.ceil(low / step) * step)
-        if (high := attrs.get(ATTR_MAX_TEMP)) is not None:
-            value = min(value, math.floor(high / step) * step)
-        return round(value, 2)
+        return fit_temperature(
+            temp,
+            attrs.get(ATTR_TARGET_TEMP_STEP) or DEFAULT_STEP,
+            attrs.get(ATTR_MIN_TEMP),
+            attrs.get(ATTR_MAX_TEMP),
+        )
 
     # -- occupancy profile --------------------------------------------------
 
@@ -315,11 +324,16 @@ class ScheduleController:
             return Profile(data)
         return Profile()
 
-    async def _async_profile_tick(self, _now: Any = None) -> None:
+    async def _async_history_tick(self, _now: Any = None) -> None:
+        """Hourly: fold new recorder history into the profile and the statistics."""
         try:
             await self.async_update_profile()
         except Exception:  # never let a recorder hiccup break the schedule
             _LOGGER.exception("Updating the occupancy profile of %s failed", self.climate_entity)
+        try:
+            await self.async_update_stats()
+        except Exception:
+            _LOGGER.exception("Updating the statistics of %s failed", self.climate_entity)
 
     async def async_update_profile(self) -> None:
         """Fold presence history since the last sample into the profile (from the recorder)."""
@@ -344,6 +358,93 @@ class ScheduleController:
         _LOGGER.debug("Profile of %s: %d new slots", self.climate_entity, len(slots))
         self._notify()
 
+    # -- statistics (manual deviations, heat-up) -------------------------------
+
+    async def async_update_stats(self) -> None:
+        """Fold thermostat history since the last sample into the statistics.
+
+        Deviations from the schedule only count while the schedule is enabled:
+        otherwise every target would look like a manual change.
+        """
+        if "recorder" not in self.hass.config.components:
+            return
+        async with self._profile_lock:
+            end = floor_slot(dt_util.utcnow())
+            start = self.stats.last_sample or end - timedelta(days=PROFILE_BACKFILL_DAYS)
+            start = dt_util.as_utc(start)
+            if end - start < SLOT:
+                return
+            samples = await self._async_climate_history(start - HEATUP_LOOKBACK, end)
+            deviations = 0
+            if self.enabled:
+                limits, days = self.limits(), self.days
+
+                def planned(slot: datetime) -> float:
+                    return fit_temperature(
+                        temperature_at(days, dt_util.as_local(slot)),
+                        limits["step"] or DEFAULT_STEP,
+                        limits["min"],
+                        limits["max"],
+                    )
+
+                for slot, deviation in deviation_slots(samples, start, end, planned):
+                    self.stats.manual.add(dt_util.as_local(slot), deviation)
+                    deviations += 1
+            self.stats.heatup.add(heatup_runs(samples))
+            self.stats.last_sample = end
+            self._store.set_stats(self.entry.entry_id, self.stats.as_dict())
+        _LOGGER.debug(
+            "Statistics of %s: %d deviation slots, %d heat-up runs",
+            self.climate_entity,
+            deviations,
+            len(self.stats.heatup.runs),
+        )
+
+    async def _async_climate_history(self, start: datetime, end: datetime) -> list[Sample]:
+        from homeassistant.components.recorder import get_instance, history
+
+        states: dict[str, list[State]] = await get_instance(self.hass).async_add_executor_job(
+            partial(
+                history.get_significant_states,
+                self.hass,
+                start,
+                end,
+                [self.climate_entity],
+                significant_changes_only=False,
+                no_attributes=False,
+            )
+        )
+        return [
+            Sample(
+                state.last_updated,
+                state.state not in (STATE_OFF, STATE_UNAVAILABLE, STATE_UNKNOWN),
+                _number(state.attributes.get(ATTR_TEMPERATURE)),
+                _number(state.attributes.get(ATTR_CURRENT_TEMPERATURE)),
+            )
+            for state in states.get(self.climate_entity, [])
+        ]
+
+    def _forget_changed_slots(
+        self, old: dict[str, list[dict[str, Any]]], new: dict[str, list[dict[str, Any]]]
+    ) -> None:
+        """Deviations measured against a schedule that changed no longer apply."""
+        today = dt_util.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        changed = False
+        for offset in range(7):
+            day = today + timedelta(days=offset)
+            if old.get(DAYS[day.weekday()]) == new.get(DAYS[day.weekday()]):
+                continue
+            slots = [
+                slot
+                for slot in range(SLOTS_PER_DAY)
+                if temperature_at(old, moment := day + slot * SLOT) != temperature_at(new, moment)
+            ]
+            if slots:
+                self.stats.manual.reset(day.weekday(), slots)
+                changed = True
+        if changed:
+            self._store.set_stats(self.entry.entry_id, self.stats.as_dict())
+
     async def _async_presence_history(
         self, start: datetime, end: datetime
     ) -> list[list[tuple[datetime, bool | None]]]:
@@ -364,6 +465,20 @@ class ScheduleController:
             [(max(s.last_changed, start), entity_present(s)) for s in states.get(entity_id, [])]
             for entity_id in self.presence_entities
         ]
+
+
+def fit_temperature(temp: float, step: float, low: float | None, high: float | None) -> float:
+    """Round to the thermostat step and clamp to its limits."""
+    value = round(round(temp / step) * step, 2)
+    if low is not None:
+        value = max(value, math.ceil(low / step) * step)
+    if high is not None:
+        value = min(value, math.floor(high / step) * step)
+    return round(value, 2)
+
+
+def _number(value: Any) -> float | None:
+    return float(value) if isinstance(value, int | float) and not isinstance(value, bool) else None
 
 
 def _available(state: State | None) -> bool:

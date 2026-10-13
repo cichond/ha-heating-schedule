@@ -30,6 +30,14 @@ With room presence entities the integration also:
   on first start, then hourly) and stored in `.storage/heating_schedule.profile`. Changing the presence
   entities starts a new profile.
 
+For every thermostat (with or without presence entities) the integration also collects, hourly from the
+recorder, statistics for future schedule suggestions, stored in `.storage/heating_schedule.stats`:
+
+- **manual deviations**: per weekday and 15-minute slot, how far the target in force was from the schedule
+  (only while the schedule is enabled and the thermostat heats; changing the schedule forgets the
+  deviations of the slots it changed),
+- **heat-up runs**: how long the room took to reach a target raised by at least 1° (the last 20 runs).
+
 Under the chart the card draws two strips: the actual presence of that day and, below it in a darker
 green, the typical occupancy of the selected weekday (stronger = more often occupied).
 
