@@ -108,6 +108,9 @@ Attached to the thermostat's device:
   occurrence of that day the measured temperature and the actual target from history,
   plus a "now" marker on today. Periods when the thermostat was heating (`hvac_action: heating`) are
   shaded orange, with the total heating time in the legend.
+- Zoom the time axis with the mouse wheel (around the pointer) or a pinch on a phone; drag (mouse),
+  scroll sideways or shift+wheel to move a zoomed chart. Double-click or the magnifier button shows the
+  whole day again; the zoom stays when switching days.
 - Hover the chart (tap on a phone) for a tooltip with the schedule, measured and target temperature
   at that time.
 - **Edit**: drag a level up/down (snaps to the thermostat step), drag a boundary sideways

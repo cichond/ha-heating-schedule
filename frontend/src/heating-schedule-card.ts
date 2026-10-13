@@ -136,7 +136,14 @@ interface Scale {
   temp: (py: number) => number;
   lo: number;
   hi: number;
+  /** Plot width in px (the x axis maps the visible minutes onto it). */
+  width: number;
 }
+
+/** Narrowest zoom: one hour across the chart. */
+const MIN_SPAN = 60;
+/** Tick spacings in minutes, the finest that fits is used. */
+const TICK_STEPS = [15, 30, 60, 120, 180, 360];
 
 const PAD = { l: 30, r: 8, t: 16, b: 20 };
 /** Extra room under the plot for the presence strips (that day + typical). */
@@ -185,8 +192,15 @@ export class HeatingScheduleCard extends LitElement {
   @state() private _aiBusy = false;
   @state() private _aiNote?: string;
   @state() private _aiIcon?: string | null;
+  /** Visible minutes of the day [start, end): zoomed with the wheel or a pinch. */
+  @state() private _view: [number, number] = [0, DAY_MIN];
   /** Touch: the tooltip stays a moment after the finger is lifted. */
   private _hoverTimer?: number;
+  /** Touch points on the chart (x in px) and the pinch they make. */
+  private _touches = new Map<number, number>();
+  private _pinch?: { ids: [number, number]; a: number; b: number };
+  /** Mouse drag panning a zoomed chart (view mode). */
+  private _pan?: { pointerId: number; x0: number; start: number };
 
   private _unsub?: Promise<() => Promise<void>>;
   private _subscribeFailed = false;
@@ -477,8 +491,8 @@ export class HeatingScheduleCard extends LitElement {
           </button>`,
         )}
       </div>
-      <div class="chart ${this._draft ? "editing" : ""}">
-        ${this._width ? this._renderChart() : nothing}${this._renderTooltip()}
+      <div class="chart ${this._draft ? "editing" : ""} ${this._zoomed ? "zoomed" : ""}">
+        ${this._width ? this._renderChart() : nothing}${this._renderTooltip()}${this._renderZoomReset()}
       </div>
       <div class="legend">
         <span><i class="line schedule"></i>${t.legend_schedule}</span>
@@ -511,21 +525,27 @@ export class HeatingScheduleCard extends LitElement {
     const bottom = PAD.b + (this._presence ? STRIPS_H : 0);
     const plotW = W - PAD.l - PAD.r;
     const plotH = H - PAD.t - bottom;
-    const x = (m: number) => PAD.l + (m / DAY_MIN) * plotW;
+    const [v0, v1] = this._view;
+    const span = v1 - v0;
+    const x = (m: number) => PAD.l + ((m - v0) / span) * plotW;
     const y = (v: number) => PAD.t + ((hi - v) / (hi - lo)) * plotH;
     this._scale = {
       x,
       y,
-      minute: (px) => ((px - PAD.l) / plotW) * DAY_MIN,
+      minute: (px) => v0 + ((px - PAD.l) / plotW) * span,
       temp: (py) => hi - ((py - PAD.t) / plotH) * (hi - lo),
       lo,
       hi,
+      width: plotW,
     };
     const editing = !!this._draft;
     const yStep = hi - lo > 12 ? 2 : 1;
     const yTicks: number[] = [];
     for (let v = Math.ceil(lo); v <= hi; v += yStep) yTicks.push(v);
-    const xTicks = W < 420 ? [0, 6, 12, 18, 24] : [0, 3, 6, 9, 12, 15, 18, 21, 24];
+    const maxTicks = W < 420 ? 4 : 8;
+    const tickStep = TICK_STEPS.find((s) => span / s <= maxTicks) ?? 360;
+    const xTicks: number[] = [];
+    for (let m = Math.ceil(v0 / tickStep) * tickStep; m <= v1; m += tickStep) xTicks.push(m);
 
     let line = `M${x(0)},${y(pts[0].t)}`;
     pts.forEach((p, i) => {
@@ -569,26 +589,30 @@ export class HeatingScheduleCard extends LitElement {
       @pointercancel=${this._onPointerUp}
       @pointerleave=${this._onPointerLeave}
       @dblclick=${this._onDoubleClick}
+      @wheel=${this._onWheel}
     >
       <defs>
+        <clipPath id="plot"><rect x=${PAD.l} y="0" width=${plotW} height=${H}></rect></clipPath>
         <linearGradient id="fill" x1="0" x2="0" y1="0" y2="1">
           <stop offset="0" class="fill-top"></stop>
           <stop offset="1" class="fill-bottom"></stop>
         </linearGradient>
       </defs>
+      ${yTicks.map(
+        (v) => svg`<line class="grid" x1=${PAD.l} x2=${W - PAD.r} y1=${y(v)} y2=${y(v)}></line>
+          <text class="axis" x=${PAD.l - 4} y=${y(v) + 3.5} text-anchor="end">${v}°</text>`,
+      )}
+      <g clip-path="url(#plot)">
       ${historyHere
         ? history!.heating.map(
             ([from, to]) => svg`<rect class="heating" x=${x(from)} y=${PAD.t}
               width=${Math.max(1, x(to) - x(from))} height=${plotH}></rect>`,
           )
         : nothing}
-      ${yTicks.map(
-        (v) => svg`<line class="grid" x1=${PAD.l} x2=${W - PAD.r} y1=${y(v)} y2=${y(v)}></line>
-          <text class="axis" x=${PAD.l - 4} y=${y(v) + 3.5} text-anchor="end">${v}°</text>`,
-      )}
       ${xTicks.map(
-        (h) => svg`<line class="grid" x1=${x(h * 60)} x2=${x(h * 60)} y1=${PAD.t} y2=${PAD.t + plotH}></line>
-          <text class="axis" x=${x(h * 60)} y=${H - 5} text-anchor=${h === 0 ? "start" : h === 24 ? "end" : "middle"}>${h}</text>`,
+        (m) => svg`<line class="grid" x1=${x(m)} x2=${x(m)} y1=${PAD.t} y2=${PAD.t + plotH}></line>
+          <text class="axis" x=${x(m)} y=${H - 5}
+            text-anchor=${m === v0 ? "start" : m === v1 ? "end" : "middle"}>${m % 60 ? formatTime(m) : m / 60}</text>`,
       )}
       <path class="area" d=${area}></path>
       ${this._presence && historyHere
@@ -634,7 +658,92 @@ export class HeatingScheduleCard extends LitElement {
       ${drag?.moved ? this._renderDragLabel(pts, drag) : nothing}
       ${this._renderSuggestionMarkers(pts, x, y, plotH)}
       ${this._renderCrosshair(x, y, plotH)}
+      </g>
     </svg>`;
+  }
+
+  private get _zoomed(): boolean {
+    return this._view[1] - this._view[0] < DAY_MIN;
+  }
+
+  private _setView(start: number, span: number): void {
+    const width = clamp(span, MIN_SPAN, DAY_MIN);
+    const from = clamp(start, 0, DAY_MIN - width);
+    this._view = [from, from + width];
+  }
+
+  private _resetZoom(): void {
+    this._view = [0, DAY_MIN];
+  }
+
+  private _renderZoomReset() {
+    if (!this._zoomed) return nothing;
+    return html`<button
+      class="zoom-reset"
+      title=${this._t.zoom_reset}
+      aria-label=${this._t.zoom_reset}
+      @click=${this._resetZoom}
+    >
+      <ha-icon icon="mdi:magnify-minus-outline"></ha-icon>
+    </button>`;
+  }
+
+  /** Wheel: zoom around the pointer; horizontal wheel (or shift) pans a zoomed chart. */
+  private _onWheel(ev: WheelEvent): void {
+    const scale = this._scale;
+    if (!scale) return;
+    const [v0, v1] = this._view;
+    const span = v1 - v0;
+    const unit = ev.deltaMode === 1 ? 33 : ev.deltaMode === 2 ? 400 : 1;
+    const pan = Math.abs(ev.deltaX) > Math.abs(ev.deltaY) ? ev.deltaX : ev.shiftKey ? ev.deltaY : 0;
+    if (pan) {
+      if (!this._zoomed) return;
+      ev.preventDefault();
+      this._setView(v0 + ((pan * unit) / scale.width) * span, span);
+      return;
+    }
+    const next = clamp(span * Math.exp(ev.deltaY * unit * 0.0015), MIN_SPAN, DAY_MIN);
+    if (next === span && !this._zoomed) return; // the whole day already: let the page scroll
+    ev.preventDefault();
+    const at = clamp(scale.minute(this._local(ev)[0]), 0, DAY_MIN);
+    this._setView(at - ((at - v0) / span) * next, next);
+  }
+
+  /** Two fingers: the minutes under them stay under them (zoom and pan at once). */
+  private _onPinch(): void {
+    const pinch = this._pinch;
+    const scale = this._scale;
+    if (!pinch || !scale) return;
+    const p1 = this._touches.get(pinch.ids[0]);
+    const p2 = this._touches.get(pinch.ids[1]);
+    if (p1 === undefined || p2 === undefined || Math.abs(p2 - p1) < 20) return;
+    const span = ((pinch.b - pinch.a) * scale.width) / (p2 - p1);
+    if (!(span > 0)) return;
+    const width = clamp(span, MIN_SPAN, DAY_MIN);
+    // Keep the midpoint between the fingers fixed when the span is clamped.
+    const mid = (pinch.a + pinch.b) / 2;
+    const midPx = (p1 + p2) / 2 - PAD.l;
+    this._setView(mid - (midPx / scale.width) * width, width);
+  }
+
+  private _trackTouch(ev: PointerEvent): boolean {
+    if (ev.pointerType !== "touch") return false;
+    this._touches.set(ev.pointerId, this._local(ev)[0]);
+    if (this._touches.size === 2 && !this._pinch && this._scale) {
+      const ids = [...this._touches.keys()] as [number, number];
+      const [a, b] = ids.map((id) => this._scale!.minute(this._touches.get(id)!));
+      this._pinch = { ids, a, b };
+      this._drag = undefined;
+      this._range = undefined;
+      this._hover = undefined;
+    }
+    return !!this._pinch;
+  }
+
+  private _untrackTouch(ev: PointerEvent): void {
+    this._touches.delete(ev.pointerId);
+    if (this._pinch?.ids.includes(ev.pointerId)) this._pinch = undefined;
+    if (this._pan?.pointerId === ev.pointerId) this._pan = undefined;
   }
 
   /** Edge time labels that do not overlap (the selected segment's edges win). */
@@ -657,7 +766,7 @@ export class HeatingScheduleCard extends LitElement {
     const profile = this._presence ? this._info?.profile : undefined;
     if (!profile?.weeks) return nothing;
     const slots = profile.days[this._day] ?? [];
-    const width = plotW / slots.length;
+    const width = (x(DAY_MIN) - x(0)) / slots.length;
     return slots.map((value, i) =>
       value > 0.02
         ? svg`<rect class="profile" x=${x(i * 15)} y=${top} width=${width + 0.5}
@@ -1053,7 +1162,12 @@ export class HeatingScheduleCard extends LitElement {
   }
 
   private _onPointerDown(ev: PointerEvent): void {
+    if (this._trackTouch(ev)) return;
     if (!this._draft) {
+      if (ev.pointerType === "mouse" && ev.button === 0 && this._zoomed) {
+        (ev.currentTarget as Element).setPointerCapture(ev.pointerId);
+        this._pan = { pointerId: ev.pointerId, x0: ev.clientX, start: this._view[0] };
+      }
       this._onHover(ev); // touch: a tap shows the values
       return;
     }
@@ -1081,10 +1195,24 @@ export class HeatingScheduleCard extends LitElement {
     if (this._draft || !this._scale) return;
     window.clearTimeout(this._hoverTimer);
     const minute = Math.round(this._scale.minute(this._local(ev)[0]) / 5) * 5;
-    this._hover = minute < 0 || minute > DAY_MIN ? undefined : Math.min(minute, DAY_MIN - 1);
+    const [v0, v1] = this._view;
+    this._hover = minute < v0 || minute > v1 ? undefined : Math.min(minute, DAY_MIN - 1);
   }
 
   private _onPointerMove(ev: PointerEvent): void {
+    if (this._touches.has(ev.pointerId)) this._touches.set(ev.pointerId, this._local(ev)[0]);
+    if (this._pinch) {
+      ev.preventDefault();
+      this._onPinch();
+      return;
+    }
+    const pan = this._pan;
+    if (pan && ev.pointerId === pan.pointerId && this._scale) {
+      const span = this._view[1] - this._view[0];
+      this._setView(pan.start - ((ev.clientX - pan.x0) / this._scale.width) * span, span);
+      this._hover = undefined;
+      return;
+    }
     if (!this._draft) {
       this._onHover(ev);
       return;
@@ -1107,6 +1235,7 @@ export class HeatingScheduleCard extends LitElement {
   }
 
   private _onPointerUp(ev: PointerEvent): void {
+    this._untrackTouch(ev);
     const drag = this._drag;
     if (!drag || ev.pointerId !== drag.pointerId) return;
     if (drag.kind === "edge" && drag.moved) {
@@ -1120,7 +1249,11 @@ export class HeatingScheduleCard extends LitElement {
   }
 
   private _onDoubleClick(ev: MouseEvent): void {
-    if (!this._draft || !this._scale) return;
+    if (!this._draft) {
+      this._resetZoom();
+      return;
+    }
+    if (!this._scale) return;
     const target = ev.target as Element;
     if (target.getAttribute("data-kind") !== "seg") return;
     const index = Number(target.getAttribute("data-i"));
@@ -1426,7 +1559,23 @@ export class HeatingScheduleCard extends LitElement {
       overflow: visible;
     }
     .chart svg {
-      touch-action: pan-y; /* a horizontal swipe moves the tooltip, a vertical one scrolls */
+      touch-action: pan-y; /* a horizontal swipe moves the tooltip, a vertical one scrolls; pinch zooms */
+    }
+    .chart.zoomed:not(.editing) svg {
+      cursor: grab;
+    }
+    .zoom-reset {
+      position: absolute;
+      top: 0;
+      right: 4px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      padding: 0;
+      border-radius: 50%;
+      --mdc-icon-size: 18px;
     }
     .chart.editing svg {
       touch-action: none;
