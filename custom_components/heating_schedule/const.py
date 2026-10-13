@@ -34,17 +34,6 @@ ATTR_NEXT_TEMPERATURE = "next_temperature"
 
 # Options (per thermostat)
 CONF_PRESENCE_ENTITIES = "presence_entities"
-CONF_EMPTY_SETBACK = "empty_setback"
-CONF_EMPTY_DELAY = "empty_delay"
-
-DEFAULT_EMPTY_SETBACK = 0.0
-DEFAULT_EMPTY_DELAY = 30
 
 PROFILE_STORAGE_KEY = f"{DOMAIN}.profile"
 PROFILE_BACKFILL_DAYS = 14
-
-REASON_SCHEDULE = "schedule"
-REASON_EMPTY = "empty"
-
-ATTR_EFFECTIVE_TEMPERATURE = "effective_temperature"
-ATTR_REASON = "reason"

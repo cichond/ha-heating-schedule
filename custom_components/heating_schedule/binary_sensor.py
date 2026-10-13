@@ -41,7 +41,4 @@ class OccupancySensor(ScheduleEntity, BinarySensorEntity):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        return {
-            "entities": self.controller.presence_entities,
-            "empty": self.controller.room.absent,
-        }
+        return {"entities": self.controller.presence_entities}

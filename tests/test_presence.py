@@ -1,4 +1,4 @@
-"""Presence: empty-room setback and the options flow."""
+"""Presence: occupancy sensor (never changes the temperature) and the options flow."""
 
 from __future__ import annotations
 
@@ -49,12 +49,15 @@ def temps(calls) -> list[float]:
     return [c.data["temperature"] for c in calls]
 
 
-async def test_empty_room_setback(hass: HomeAssistant, freezer: FrozenDateTimeFactory) -> None:
+async def test_presence_does_not_change_the_target(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
     hass.states.async_set("binary_sensor.desk", "on")
     hass.states.async_set("binary_sensor.chair", "off")
-    _entry, calls = await _setup(
+    entry, calls = await _setup(
         hass,
         freezer,
+        # options of the removed empty-room setback are ignored
         {
             "presence_entities": ["binary_sensor.desk", "binary_sensor.chair"],
             "empty_setback": 2,
@@ -62,40 +65,32 @@ async def test_empty_room_setback(hass: HomeAssistant, freezer: FrozenDateTimeFa
         },
     )
     assert hass.states.get("binary_sensor.office_occupancy").state == "on"
-    assert calls == []
 
     hass.states.async_set("binary_sensor.desk", "off")
     await hass.async_block_till_done()
     assert hass.states.get("binary_sensor.office_occupancy").state == "off"
-    assert calls == []  # not yet: delay
 
-    freezer.tick(timedelta(minutes=31))
+    freezer.tick(timedelta(minutes=60))
     async_fire_time_changed(hass)
     await hass.async_block_till_done()
-    assert temps(calls) == [19]
+    assert calls == []
     sensor = hass.states.get("sensor.office_scheduled_temperature")
-    assert sensor.attributes["reason"] == "empty"
-    assert sensor.attributes["effective_temperature"] == 19
-
-    hass.states.async_set(CLIMATE, "heat", {**ATTRS, "temperature": 19})
-    hass.states.async_set("binary_sensor.chair", "on")
-    await hass.async_block_till_done()
-    assert temps(calls) == [19, 21]
+    assert "reason" not in sensor.attributes
+    assert entry.runtime_data.as_dict()["presence"] == {
+        "entities": ["binary_sensor.desk", "binary_sensor.chair"],
+        "occupied": False,
+    }
 
 
 async def test_unavailable_is_not_absence(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
     hass.states.async_set("binary_sensor.desk", "unavailable")
-    _entry, calls = await _setup(
+    _entry, _calls = await _setup(
         hass,
         freezer,
-        {"presence_entities": ["binary_sensor.desk"], "empty_setback": 2, "empty_delay": 5},
+        {"presence_entities": ["binary_sensor.desk"]},
     )
-    freezer.tick(timedelta(minutes=10))
-    async_fire_time_changed(hass)
-    await hass.async_block_till_done()
-    assert calls == []
     assert hass.states.get("binary_sensor.office_occupancy").state == "unknown"
 
 
@@ -107,11 +102,7 @@ async def test_options_flow_reloads(hass: HomeAssistant, freezer: FrozenDateTime
     result = await hass.config_entries.options.async_init(entry.entry_id)
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
-        {
-            "presence_entities": ["binary_sensor.desk"],
-            "empty_setback": 1,
-            "empty_delay": 15,
-        },
+        {"presence_entities": ["binary_sensor.desk"]},
     )
     await hass.async_block_till_done()
     assert result["type"] == "create_entry"

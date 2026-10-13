@@ -25,7 +25,6 @@ const STRINGS = {
     all: "All",
     edit_hint:
       "Drag a level up or down, drag a boundary sideways. Double-click a level to split it. Tap a level for more options.",
-    override_empty: "Room empty →",
     legend_typical: "typical presence",
     legend_presence: "presence that day",
     legend_heating: "heating",
@@ -39,10 +38,8 @@ const STRINGS = {
     field_entity: "Thermostat",
     field_title: "Name",
     field_presence_entities: "Room presence entities (any of them)",
-    field_empty_setback: "Empty room setback",
-    field_empty_delay: "Empty room after",
     presence_help:
-      "The room is occupied when any presence entity is on (OR) (person / device tracker: home). These entities also build the typical-presence profile. Unknown or unavailable never counts as empty. Setback 0 = off.",
+      "The room is occupied when any presence entity is on (OR) (person / device tracker: home). These entities also build the typical-presence profile. They are shown on the chart and do not change the temperature.",
     remove_schedule: "Remove schedule",
     remove_confirm: "Remove the schedule of {name}? Its schedule, switch and sensors will be deleted.",
     not_found:
@@ -74,7 +71,6 @@ const STRINGS = {
     all: "Wszystkie",
     edit_hint:
       "Przeciągnij poziom w górę lub w dół, a granicę w bok. Dwuklik na poziomie dzieli go na dwa. Dotknij poziomu, żeby zobaczyć więcej opcji.",
-    override_empty: "Pusty pokój →",
     legend_typical: "typowa obecność",
     legend_presence: "obecność tego dnia",
     legend_heating: "grzanie",
@@ -88,10 +84,8 @@ const STRINGS = {
     field_entity: "Termostat",
     field_title: "Nazwa",
     field_presence_entities: "Encje obecności w pokoju (wystarczy dowolna)",
-    field_empty_setback: "Obniżka w pustym pokoju",
-    field_empty_delay: "Pusty pokój po",
     presence_help:
-      "Pokój jest zajęty, gdy którakolwiek encja obecności jest włączona (LUB) (osoba / urządzenie: w domu). Z tych encji powstaje też profil typowej obecności. Stan nieznany lub niedostępny nigdy nie oznacza pustego pokoju. Obniżka 0 = wyłączona.",
+      "Pokój jest zajęty, gdy którakolwiek encja obecności jest włączona (LUB) (osoba / urządzenie: w domu). Z tych encji powstaje też profil typowej obecności. Są pokazywane na wykresie i nie zmieniają temperatury.",
     remove_schedule: "Usuń harmonogram",
     remove_confirm: "Usunąć harmonogram termostatu {name}? Harmonogram, przełącznik i sensory zostaną usunięte.",
     not_found:

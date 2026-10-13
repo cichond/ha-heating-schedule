@@ -41,8 +41,7 @@
     current: { temp: 19, next_change: new Date(new Date().setHours(19,0,0,0)).toISOString(), next_temp: 21 },
     limits: { min: 5, max: 45, step: 1 }, switch_entity: "switch.sypialnia_termostat_harmonogram", sensor_entity: null,
     occupancy_entity: "binary_sensor.sypialnia_termostat_obecnosc",
-    effective: params.has("empty") ? { temp: 17, reason: "empty" } : { temp: 19, reason: "schedule" },
-    presence: { entities: ["binary_sensor.a"], occupied: !params.has("empty"), empty: params.has("empty"), setback: 2, delay: 30 },
+    presence: { entities: ["binary_sensor.a"], occupied: !params.has("empty") },
     profile: { weeks: 2, days: Object.fromEntries(["mon","tue","wed","thu","fri","sat","sun"].map(d => [d,
       Array.from({ length: 96 }, (_, i) => (i >= 22 && i < 34) || (i >= 76 && i < 92) ? 0.6 + 0.4 * Math.sin(i) ** 2 : (i >= 92 || i < 22) ? 0.9 : 0.05)])) } };
   const subs = [];

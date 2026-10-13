@@ -40,8 +40,6 @@ async def test_configure_survives_reload(
             "entity_id": CLIMATE,
             "title": "Biuro",
             "presence_entities": ["binary_sensor.desk"],
-            "empty_setback": 1.5,
-            "empty_delay": 20,
         }
     )
     events = []
@@ -51,7 +49,7 @@ async def test_configure_survives_reload(
     await hass.async_block_till_done()
 
     assert entry.title == "Biuro"
-    assert entry.options["presence_entities"] == ["binary_sensor.desk"]
+    assert entry.options == {"presence_entities": ["binary_sensor.desk"]}
     occupancy = er.async_get(hass).async_get_entity_id(
         "binary_sensor", DOMAIN, f"{entry.entry_id}_occupancy"
     )
@@ -65,8 +63,6 @@ async def test_configure_survives_reload(
     event = events[-1]
     assert event["title"] == "Biuro"
     assert event["presence"]["entities"] == ["binary_sensor.desk"]
-    assert event["presence"]["setback"] == 1.5
-    assert event["presence"]["delay"] == 20
 
 
 async def test_add_and_remove(hass: HomeAssistant, hass_ws_client: WebSocketGenerator) -> None:

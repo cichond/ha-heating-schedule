@@ -18,22 +18,20 @@ thermostat → *Configure*):
 | Option | Meaning |
 |---|---|
 | Room presence entities | Any number of `binary_sensor` / `person` / `device_tracker` / `input_boolean` / `switch` / `light`. The room is occupied when **any** of them is `on` (person/device tracker: `home`). |
-| Empty room setback, delay | Lower the target by this many degrees after the room has been empty for the delay. `0` = off. Useful with fast heating; slow floor heating cannot follow it. |
 
-Unknown or unavailable states never count as absence. The effective target is always the schedule,
-possibly lowered while the room is empty; a manual change holds until that target changes again.
+Presence is shown on the card only; it never changes the temperature. Unknown or unavailable states
+never count as absence. A manual change of the target holds until the next schedule point.
 
 With room presence entities the integration also:
 
-- adds `binary_sensor.<thermostat>_occupancy` (combined presence; attribute `empty` once the delay passed),
+- adds `binary_sensor.<thermostat>_occupancy` (combined presence),
 - builds an **occupancy profile**: the share of each 15-minute slot per weekday the room was occupied,
   averaged over about the last eight weeks. It is filled from the recorder (backfilled up to 14 days
   on first start, then hourly) and stored in `.storage/heating_schedule.profile`. Changing the presence
   entities starts a new profile.
 
 Under the chart the card draws two strips: the actual presence of that day and, below it in a darker
-green, the typical occupancy of the selected weekday (stronger = more often occupied). The scheduled-temperature sensor has the attributes
-`effective_temperature` and `reason` (`schedule`, `empty`).
+green, the typical occupancy of the selected weekday (stronger = more often occupied).
 
 ## Installation (HACS)
 
@@ -51,7 +49,7 @@ runs in Polish) with the card of every configured thermostat, grouped by the flo
 level, then rooms by name; thermostats without a floor last). Everything is configured there:
 
 - **+** in the header adds a thermostat,
-- the cog on a card renames it, sets its presence entities and empty-room setback, or removes its schedule.
+- the cog on a card renames it, sets its presence entities, or removes its schedule.
 
 Adding, renaming and changing presence apply immediately (the entry reloads); no restart is needed.
 These actions need an admin user. The same settings are also available under Settings → Devices &
@@ -64,7 +62,7 @@ Attached to the thermostat's device:
 | Entity | Meaning |
 |---|---|
 | `switch.<thermostat>_schedule` | schedule on/off |
-| `sensor.<thermostat>_scheduled_temperature` | target temperature the schedule asks for now; attributes `next_change`, `next_temperature`, `effective_temperature`, `reason` |
+| `sensor.<thermostat>_scheduled_temperature` | target temperature the schedule asks for now; attributes `next_change`, `next_temperature` |
 | `binary_sensor.<thermostat>_occupancy` | only with room presence entities, see above |
 
 ## Card
@@ -101,7 +99,7 @@ entity: climate.bedroom_thermostat
 `heating_schedule/list`, `heating_schedule/get`, `heating_schedule/save` (`entity_id`, `days?`, `enabled?`),
 `heating_schedule/subscribe` (`entity_id`; sends the schedule now and after every change).
 Admin only: `heating_schedule/add` (`entity_id`), `heating_schedule/configure` (`entity_id`, `title?`,
-`presence_entities?`, `empty_setback?`, `empty_delay?`), `heating_schedule/remove` (`entity_id`).
+`presence_entities?`), `heating_schedule/remove` (`entity_id`).
 
 ## Development
 

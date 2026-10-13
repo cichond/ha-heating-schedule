@@ -70,12 +70,9 @@
         "title": "Obecność",
         "description": "Encje obecności: pokój jest zajęty, gdy którakolwiek jest włączona (osoba/urządzenie: w domu). Z nich powstaje profil obecności na karcie. Stan nieznany/niedostępny nigdy nie liczy się jako nieobecność.",
         "data": {
-          "presence_entities": "Encje obecności w pokoju",
-          "empty_setback": "Obniżka w pustym pokoju",
-          "empty_delay": "Pusty pokój po"
+          "presence_entities": "Encje obecności w pokoju"
         },
         "data_description": {
-          "empty_setback": "O ile obniżyć temperaturę, gdy pokój jest pusty przez podany czas. 0 = wyłączone (ma sens tylko przy szybkiej podłogówce)."
         }
       }
     }

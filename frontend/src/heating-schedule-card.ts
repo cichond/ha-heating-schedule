@@ -70,13 +70,9 @@ export interface ScheduleInfo {
   enabled: boolean;
   days: Week;
   current: { temp: number | null; next_change: string | null; next_temp: number | null };
-  effective: { temp: number | null; reason: "schedule" | "empty" };
   presence: {
     entities: string[];
     occupied: boolean | null;
-    empty: boolean;
-    setback: number;
-    delay: number;
   };
   profile: { days: Record<Day, number[]>; weeks: number } | null;
   limits: { min: number | null; max: number | null; step: number };
@@ -452,18 +448,8 @@ export class HeatingScheduleCard extends LitElement {
         <ha-icon class="mode ${climate.state}" icon=${icon} title=${mode} aria-label=${mode}></ha-icon>
         ${next}
       </div>
-      ${this._renderOverride()}
       ${info?.enabled && climate.state === "off" ? html`<div class="hint">${t.off_hint}</div>` : nothing}
     `;
-  }
-
-  private _renderOverride() {
-    const info = this._info;
-    if (!info?.enabled || info.effective.reason === "schedule") return nothing;
-    const t = this._t;
-    const temp = this._fmtTemp(info.effective.temp);
-    const text = `${t.override_empty} ${temp} (−${this._fmtTemp(info.presence.setback)})`;
-    return html`<div class="override">${text}</div>`;
   }
 
   private _renderBody() {
@@ -1069,15 +1055,6 @@ export class HeatingScheduleCard extends LitElement {
     }
     .mode.heat {
       color: var(--hs-current);
-    }
-    .override {
-      display: inline-block;
-      margin: 2px 0 4px;
-      padding: 2px 10px;
-      border-radius: 10px;
-      font-size: 0.85em;
-      background: var(--warning-color, #ffa600);
-      color: #fff;
     }
     .profile {
       shape-rendering: crispEdges;

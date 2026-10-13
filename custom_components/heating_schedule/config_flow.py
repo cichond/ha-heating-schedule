@@ -9,31 +9,16 @@ from homeassistant.core import callback
 from homeassistant.helpers.selector import (
     EntitySelector,
     EntitySelectorConfig,
-    NumberSelector,
-    NumberSelectorConfig,
-    NumberSelectorMode,
 )
 import voluptuous as vol
 
 from .const import (
     CONF_CLIMATE_ENTITY,
-    CONF_EMPTY_DELAY,
-    CONF_EMPTY_SETBACK,
     CONF_PRESENCE_ENTITIES,
-    DEFAULT_EMPTY_DELAY,
-    DEFAULT_EMPTY_SETBACK,
     DOMAIN,
 )
 
 PRESENCE_DOMAINS = ["binary_sensor", "person", "device_tracker", "input_boolean", "switch", "light"]
-
-
-def _minutes() -> NumberSelector:
-    return NumberSelector(
-        NumberSelectorConfig(
-            min=1, max=480, step=1, unit_of_measurement="min", mode=NumberSelectorMode.BOX
-        )
-    )
 
 
 class HeatingScheduleConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -73,7 +58,7 @@ class HeatingScheduleConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class HeatingScheduleOptionsFlow(OptionsFlow):
-    """Presence entities and the empty-room setback."""
+    """Presence entities (shown on the card; they do not change the temperature)."""
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         if user_input is not None:
@@ -84,21 +69,6 @@ class HeatingScheduleOptionsFlow(OptionsFlow):
                 vol.Optional(
                     CONF_PRESENCE_ENTITIES, default=options.get(CONF_PRESENCE_ENTITIES, [])
                 ): EntitySelector(EntitySelectorConfig(domain=PRESENCE_DOMAINS, multiple=True)),
-                vol.Optional(
-                    CONF_EMPTY_SETBACK,
-                    default=options.get(CONF_EMPTY_SETBACK, DEFAULT_EMPTY_SETBACK),
-                ): NumberSelector(
-                    NumberSelectorConfig(
-                        min=0,
-                        max=10,
-                        step=0.5,
-                        unit_of_measurement="°C",
-                        mode=NumberSelectorMode.BOX,
-                    )
-                ),
-                vol.Optional(
-                    CONF_EMPTY_DELAY, default=options.get(CONF_EMPTY_DELAY, DEFAULT_EMPTY_DELAY)
-                ): _minutes(),
             }
         )
         return self.async_show_form(step_id="init", data_schema=schema)

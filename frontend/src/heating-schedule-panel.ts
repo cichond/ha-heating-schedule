@@ -183,8 +183,6 @@ export class HeatingSchedulePanel extends LitElement {
       data: {
         title: info.title,
         presence_entities: info.presence.entities,
-        empty_setback: info.presence.setback,
-        empty_delay: info.presence.delay,
       },
     };
   };
@@ -219,18 +217,6 @@ export class HeatingSchedulePanel extends LitElement {
       {
         name: "presence_entities",
         selector: { entity: { multiple: true, filter: [{ domain: PRESENCE_DOMAINS }] } },
-      },
-      {
-        name: "empty_setback",
-        selector: {
-          number: { min: 0, max: 10, step: 0.5, mode: "box", unit_of_measurement: "°C" },
-        },
-      },
-      {
-        name: "empty_delay",
-        selector: {
-          number: { min: 1, max: 480, step: 1, mode: "box", unit_of_measurement: "min" },
-        },
       },
     ];
   }
@@ -271,8 +257,6 @@ export class HeatingSchedulePanel extends LitElement {
         entity_id: dialog.info.climate_entity,
         title,
         presence_entities: (data.presence_entities as string[] | undefined) ?? [],
-        empty_setback: Number(data.empty_setback ?? 0),
-        empty_delay: Number(data.empty_delay ?? 30),
       }),
     );
   }

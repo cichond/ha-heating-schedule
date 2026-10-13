@@ -14,8 +14,6 @@ import voluptuous as vol
 
 from .const import (
     CONF_CLIMATE_ENTITY,
-    CONF_EMPTY_DELAY,
-    CONF_EMPTY_SETBACK,
     CONF_PRESENCE_ENTITIES,
     DOMAIN,
     signal_updated,
@@ -122,22 +120,22 @@ def ws_subscribe(
         vol.Required("entity_id"): cv.entity_id,
         vol.Optional("title"): vol.All(cv.string, vol.Length(min=1)),
         vol.Optional(CONF_PRESENCE_ENTITIES): [cv.entity_id],
-        vol.Optional(CONF_EMPTY_SETBACK): vol.All(vol.Coerce(float), vol.Range(min=0, max=10)),
-        vol.Optional(CONF_EMPTY_DELAY): vol.All(vol.Coerce(int), vol.Range(min=1, max=480)),
     }
 )
 @callback
 def ws_configure(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
 ) -> None:
-    """Rename a thermostat or change its presence options (the entry reloads)."""
+    """Rename a thermostat or change its presence entities (the entry reloads)."""
     if (entry := async_find_entry(hass, msg["entity_id"])) is None:
         connection.send_error(msg["id"], "not_found", f"No schedule for {msg['entity_id']}")
         return
-    options = dict(entry.options)
-    for key in (CONF_PRESENCE_ENTITIES, CONF_EMPTY_SETBACK, CONF_EMPTY_DELAY):
-        if key in msg:
-            options[key] = msg[key]
+    # Rebuilt from the known keys, which also drops options of removed features.
+    options = {
+        CONF_PRESENCE_ENTITIES: msg.get(
+            CONF_PRESENCE_ENTITIES, entry.options.get(CONF_PRESENCE_ENTITIES, [])
+        )
+    }
     hass.config_entries.async_update_entry(
         entry, title=msg.get("title", entry.title), options=options
     )

@@ -70,12 +70,9 @@
         "title": "Presence",
         "description": "Presence entities: the room counts as occupied when any of them is on (person/device tracker: home). They feed the occupancy profile shown on the card. Unknown/unavailable states never count as absence.",
         "data": {
-          "presence_entities": "Room presence entities",
-          "empty_setback": "Empty room setback",
-          "empty_delay": "Empty room delay"
+          "presence_entities": "Room presence entities"
         },
         "data_description": {
-          "empty_setback": "Lower the target by this much when the room has been empty for the delay. 0 = off (worth it only with fast floor heating)."
         }
       }
     }
