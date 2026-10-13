@@ -30,6 +30,8 @@ MIN_KNOWN_SHARE = 0.5  # a slot counts when the thermostat heated for at least h
 MANUAL_THRESHOLD = 0.25  # |deviation| from which a slot counts as manually changed
 MANUAL_MIN_HOLD = timedelta(minutes=30)  # shorter-lived targets are ignored
 MANUAL_CLIP = 3.0  # degrees; a larger deviation counts as this much
+HABIT_SHARE = 0.4  # hourly share of manual changes for a weekday to count
+HABIT_MIN_DAYS = 2  # ... and on at least this many days in all at that hour
 STATS_VERSION = 2  # 1: short-lived targets were counted; the manual statistics are dropped
 
 HEATUP_MIN_RISE = 1.0  # target raised by at least this, and the room this far below it
@@ -190,6 +192,29 @@ class ManualStats:
         for slot in slots:
             self.avg[day][slot] = self.share[day][slot] = 0.0
             self.count[day][slot] = 0
+
+    def habits(self) -> dict[tuple[int, int], float]:
+        """Hourly manual changes done often: {(weekday, hour): mean deviation}.
+
+        An hour counts on a weekday where the target was changed in at least
+        ``HABIT_SHARE`` of the samples, once changes at that hour add up to
+        ``HABIT_MIN_DAYS`` days over the week (any weekdays, or the same one
+        twice): a single day is a one-off.
+        """
+        result: dict[tuple[int, int], float] = {}
+        for hour in range(24):
+            slots = range(hour * 4, hour * 4 + 4)
+            found: dict[int, float] = {}
+            days = 0.0
+            for day in range(7):
+                count = min(min(self.count[day][s] for s in slots), WINDOW)
+                share = sum(self.share[day][s] for s in slots) / 4
+                if count and share >= HABIT_SHARE:
+                    days += share * count
+                    found[day] = sum(self.avg[day][s] for s in slots) / 4
+            if days >= HABIT_MIN_DAYS - 0.01:
+                result.update({(day, hour): round(avg, 1) for day, avg in found.items()})
+        return result
 
     def weeks(self) -> int:
         return min(max(max(day) for day in self.count), WINDOW)

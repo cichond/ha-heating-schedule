@@ -94,6 +94,25 @@ def test_manual_stats_average_and_share() -> None:
     assert again.as_dict() == manual.as_dict()
 
 
+def test_manual_habits_need_two_days() -> None:
+    manual = stats.ManualStats()
+
+    def day_at_17(day: int, deviation: float) -> None:
+        for minute in (0, 15, 30, 45):
+            manual.add(t(17, minute, day=day), deviation)
+
+    day_at_17(12, 2.0)  # Monday: once is a one-off
+    assert manual.habits() == {}
+    day_at_17(13, 3.0)  # Tuesday as well: a habit on both days
+    assert manual.habits() == {(0, 17): 2.0, (1, 17): 3.0}
+
+    other = stats.ManualStats()
+    for week in (12, 19):  # the same weekday twice
+        for minute in (0, 15, 30, 45):
+            other.add(t(8, minute, day=week), 1.0)
+    assert other.habits() == {(0, 8): 1.0}
+
+
 # -- heat-up ----------------------------------------------------------------
 
 
