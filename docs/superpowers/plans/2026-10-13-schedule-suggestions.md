@@ -29,7 +29,7 @@ Cel: od teraz liczyć czas nagrzewania i ręczne zmiany temperatury, tak jak dzi
      Epizody przerwane (nowa zmiana zadanej albo tryb `off`) są odrzucane.
    - **`HeatupStats`:** mediana minut na stopień i mediana opóźnienia z ostatnich N (np. 20) epizodów.
    - Testy z syntetycznymi seriami: przejście przez północ, DST, przerwane epizody, własne i obce konteksty.
-2. **Zbieranie:** w `controller.py`, w istniejącym cotygodniowym (`_async_profile_tick`) cyklu godzinnym,
+2. **Zbieranie:** w `controller.py`, w istniejącym godzinnym cyklu profilu (`_async_profile_tick`),
    pobranie z recordera historii climate z atrybutami od `last_sample`. Nowe statystyki zapisywane
    w nowym pliku `.storage/heating_schedule.stats` (osobny `Store`, opóźniony zapis jak profil).
    Uzupełnienie wstecz do 14 dni przy pierwszym starcie. Statystyki zbierają się **zawsze**, także bez
