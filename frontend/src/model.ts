@@ -120,3 +120,36 @@ export function cloneWeek(week: Week): Week {
 export function weeksEqual(a: Week, b: Week): boolean {
   return JSON.stringify(DAYS.map((d) => a[d])) === JSON.stringify(DAYS.map((d) => b[d]));
 }
+
+const SENSITIVITY_SUFFIXES = ["_deadzone_temperature", "_temperature_delta"];
+
+/**
+ * How far from the target the thermostat switches heating on and off, read
+ * from a `number`/`sensor` entity ending in one of ``SENSITIVITY_SUFFIXES``:
+ * named after the thermostat (`climate.x` → `sensor.x_temperature_delta`) or
+ * on its device. Undefined when there is none or it has no positive value.
+ */
+export function sensitivity(
+  climate: string,
+  states: Record<string, { state: string }>,
+  entities: Record<string, { device_id?: string | null }> = {},
+): number | undefined {
+  const object = climate.split(".")[1];
+  const named = ["number", "sensor"].flatMap((d) =>
+    SENSITIVITY_SUFFIXES.map((s) => `${d}.${object}${s}`),
+  );
+  const device = entities[climate]?.device_id;
+  const onDevice = device
+    ? Object.keys(entities).filter(
+        (id) =>
+          entities[id].device_id === device &&
+          /^(number|sensor)\./.test(id) &&
+          SENSITIVITY_SUFFIXES.some((s) => id.endsWith(s)),
+      )
+    : [];
+  for (const id of [...named, ...onDevice]) {
+    const value = Number(states[id]?.state);
+    if (states[id]?.state && Number.isFinite(value) && value > 0) return value;
+  }
+  return undefined;
+}

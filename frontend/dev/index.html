@@ -71,6 +71,7 @@
     language: "pl", locale: { language: "pl" }, user: { is_admin: true },
     states: { "climate.sypialnia_termostat": { entity_id: "climate.sypialnia_termostat", state: params.get("mode") ?? "heat",
       attributes: { friendly_name: "Sypialnia Termostat", current_temperature: 19.6, temperature: 19 } },
+      "number.sypialnia_termostat_deadzone_temperature": { entity_id: "number.sypialnia_termostat_deadzone_temperature", state: params.get("band") ?? "1", attributes: {} },
       "climate.biuro_termostat": { entity_id: "climate.biuro_termostat", state: "off",
       attributes: { friendly_name: "Biuro Termostat", current_temperature: 20.8, temperature: 21 } } },
     connection: { subscribeMessage: async (cb, msg) => { subs.push(cb); setTimeout(() => cb(info)); return async () => {}; } },

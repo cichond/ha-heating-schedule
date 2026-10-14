@@ -19,6 +19,7 @@ import {
   moveEdge,
   removeSegment,
   segmentEnd,
+  sensitivity,
   setTemp,
   snap,
   splitSegment,
@@ -373,8 +374,15 @@ export class HeatingScheduleCard extends LitElement {
     return `${value.toLocaleString(lang, { maximumFractionDigits: 1 })}°`;
   }
 
+  /** The thermostat's switching sensitivity, shown as a band around the schedule. */
+  private get _band(): number | undefined {
+    if (!this.hass || !this._config) return undefined;
+    return sensitivity(this._config.entity, this.hass.states, this.hass.entities);
+  }
+
   private _yRange(pts: Pt[]): [number, number] {
-    const values = pts.map((p) => p.t);
+    const band = this._band ?? 0;
+    const values = pts.flatMap((p) => [p.t - band, p.t + band]);
     const history = this._history;
     if (history && isoDate(history.date) === isoDate(lastDateOf(this._day))) {
       values.push(...history.current.map((v) => v[1]));
@@ -498,6 +506,9 @@ export class HeatingScheduleCard extends LitElement {
         <span><i class="line schedule"></i>${t.legend_schedule}</span>
         <span><i class="line current"></i>${t.legend_current}</span>
         <span><i class="line target"></i>${t.legend_target}</span>
+        ${this._band
+          ? html`<span><i class="swatch band"></i>${t.legend_band} <b>±${this._fmtTemp(this._band)}</b></span>`
+          : nothing}
         ${heatMinutes
           ? html`<span><i class="swatch heating"></i>${t.legend_heating} <b>${formatDuration(heatMinutes)}</b></span>`
           : nothing}
@@ -579,6 +590,7 @@ export class HeatingScheduleCard extends LitElement {
     const nowM = minuteOfDay(new Date());
     const currentTemp = this.hass?.states[this._config!.entity]?.attributes.current_temperature;
     const drag = this._drag;
+    const band = this._band;
 
     return html`<svg
       width=${W}
@@ -615,6 +627,14 @@ export class HeatingScheduleCard extends LitElement {
             text-anchor=${m === v0 ? "start" : m === v1 ? "end" : "middle"}>${m % 60 ? formatTime(m) : m / 60}</text>`,
       )}
       <path class="area" d=${area}></path>
+      ${band
+        ? pts.map((p, i) => {
+            const top = y(Math.min(p.t + band, hi));
+            const height = y(Math.max(p.t - band, lo)) - top;
+            return svg`<rect class="band" x=${x(p.m)} y=${top}
+              width=${Math.max(0, x(segmentEnd(pts, i)) - x(p.m))} height=${Math.max(0, height)}></rect>`;
+          })
+        : nothing}
       ${this._presence && historyHere
         ? history!.occupied.map(
             ([from, to]) => svg`<rect class="presence-strip" x=${x(from)} y=${PAD.t + plotH + 1}
@@ -1373,6 +1393,10 @@ export class HeatingScheduleCard extends LitElement {
       background: var(--hs-heating);
       opacity: 0.35;
     }
+    .swatch.band {
+      background: var(--hs-schedule);
+      opacity: 0.3;
+    }
     .heating {
       fill: var(--hs-heating);
       fill-opacity: 0.16;
@@ -1604,6 +1628,11 @@ export class HeatingScheduleCard extends LitElement {
     }
     .area {
       fill: url(#fill);
+    }
+    .band {
+      fill: var(--hs-schedule);
+      fill-opacity: 0.18;
+      pointer-events: none;
     }
     .schedule {
       fill: none;

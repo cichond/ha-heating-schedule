@@ -6,6 +6,7 @@ import {
   dropEmpty,
   formatDuration,
   formatTime,
+  sensitivity,
   moveEdge,
   type Pt,
   removeSegment,
@@ -81,4 +82,23 @@ test("formatDuration", () => {
   assert.equal(formatDuration(344), "5 h 44 min");
   assert.equal(formatDuration(40), "40 min");
   assert.equal(formatDuration(120), "2 h 0 min");
+});
+
+test("sensitivity from a named or device entity", () => {
+  const states = {
+    "number.salon_termostat_deadzone_temperature": { state: "1" },
+    "sensor.toaleta_termostat_temperature_delta": { state: "0.5" },
+    "number.p2_delta_temperature_delta": { state: "1.5" },
+    "sensor.broken_temperature_delta": { state: "unavailable" },
+  };
+  const entities = {
+    "climate.pokoj_p2_termostat": { device_id: "d2" },
+    "number.p2_delta_temperature_delta": { device_id: "d2" },
+    "number.p2_other": { device_id: "d2" },
+  };
+  assert.equal(sensitivity("climate.salon_termostat", states), 1);
+  assert.equal(sensitivity("climate.toaleta_termostat", states, entities), 0.5);
+  assert.equal(sensitivity("climate.pokoj_p2_termostat", states, entities), 1.5);
+  assert.equal(sensitivity("climate.broken", states, entities), undefined);
+  assert.equal(sensitivity("climate.none", states, entities), undefined);
 });
