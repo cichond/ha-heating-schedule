@@ -96,9 +96,9 @@ test("sensitivity from a named or device entity", () => {
     "number.p2_delta_temperature_delta": { device_id: "d2" },
     "number.p2_other": { device_id: "d2" },
   };
-  assert.equal(sensitivity("climate.salon_termostat", states), 1);
-  assert.equal(sensitivity("climate.toaleta_termostat", states, entities), 0.5);
-  assert.equal(sensitivity("climate.pokoj_p2_termostat", states, entities), 1.5);
+  assert.deepEqual(sensitivity("climate.salon_termostat", states), { below: 1, above: 0 });
+  assert.deepEqual(sensitivity("climate.toaleta_termostat", states, entities), { below: 0.5, above: 0.5 });
+  assert.deepEqual(sensitivity("climate.pokoj_p2_termostat", states, entities), { below: 1.5, above: 1.5 });
   assert.equal(sensitivity("climate.broken", states, entities), undefined);
   assert.equal(sensitivity("climate.none", states, entities), undefined);
 });

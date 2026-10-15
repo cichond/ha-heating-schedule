@@ -20,6 +20,7 @@ import {
   removeSegment,
   segmentEnd,
   sensitivity,
+  type Band,
   setTemp,
   snap,
   splitSegment,
@@ -375,14 +376,14 @@ export class HeatingScheduleCard extends LitElement {
   }
 
   /** The thermostat's switching sensitivity, shown as a band around the schedule. */
-  private get _band(): number | undefined {
+  private get _band(): Band | undefined {
     if (!this.hass || !this._config) return undefined;
     return sensitivity(this._config.entity, this.hass.states, this.hass.entities);
   }
 
   private _yRange(pts: Pt[]): [number, number] {
-    const band = this._band ?? 0;
-    const values = pts.flatMap((p) => [p.t - band, p.t + band]);
+    const band = this._band ?? { below: 0, above: 0 };
+    const values = pts.flatMap((p) => [p.t - band.below, p.t + band.above]);
     const history = this._history;
     if (history && isoDate(history.date) === isoDate(lastDateOf(this._day))) {
       values.push(...history.current.map((v) => v[1]));
@@ -507,7 +508,8 @@ export class HeatingScheduleCard extends LitElement {
         <span><i class="line current"></i>${t.legend_current}</span>
         <span><i class="line target"></i>${t.legend_target}</span>
         ${this._band
-          ? html`<span><i class="swatch band"></i>${t.legend_band} <b>±${this._fmtTemp(this._band)}</b></span>`
+          ? html`<span><i class="swatch band"></i>${t.legend_band}
+              <b>${this._band.above ? "±" : "−"}${this._fmtTemp(this._band.below)}</b></span>`
           : nothing}
         ${heatMinutes
           ? html`<span><i class="swatch heating"></i>${t.legend_heating} <b>${formatDuration(heatMinutes)}</b></span>`
@@ -629,8 +631,8 @@ export class HeatingScheduleCard extends LitElement {
       <path class="area" d=${area}></path>
       ${band
         ? pts.map((p, i) => {
-            const top = y(Math.min(p.t + band, hi));
-            const height = y(Math.max(p.t - band, lo)) - top;
+            const top = y(Math.min(p.t + band.above, hi));
+            const height = y(Math.max(p.t - band.below, lo)) - top;
             return svg`<rect class="band" x=${x(p.m)} y=${top}
               width=${Math.max(0, x(segmentEnd(pts, i)) - x(p.m))} height=${Math.max(0, height)}></rect>`;
           })

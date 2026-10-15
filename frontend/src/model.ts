@@ -123,17 +123,25 @@ export function weeksEqual(a: Week, b: Week): boolean {
 
 const SENSITIVITY_SUFFIXES = ["_deadzone_temperature", "_temperature_delta"];
 
+/** Degrees below and above the target between which the thermostat does not switch. */
+export interface Band {
+  below: number;
+  above: number;
+}
+
 /**
- * How far from the target the thermostat switches heating on and off, read
- * from a `number`/`sensor` entity ending in one of ``SENSITIVITY_SUFFIXES``:
- * named after the thermostat (`climate.x` → `sensor.x_temperature_delta`) or
- * on its device. Undefined when there is none or it has no positive value.
+ * The thermostat's switching band, read from a `number`/`sensor` entity ending
+ * in one of ``SENSITIVITY_SUFFIXES``: named after the thermostat
+ * (`climate.x` → `sensor.x_temperature_delta`) or on its device. A
+ * `_temperature_delta` is ± around the target; a `_deadzone_temperature` lies
+ * below it (heating stops at the target). Undefined when there is none or it
+ * has no positive value.
  */
 export function sensitivity(
   climate: string,
   states: Record<string, { state: string }>,
   entities: Record<string, { device_id?: string | null }> = {},
-): number | undefined {
+): Band | undefined {
   const object = climate.split(".")[1];
   const named = ["number", "sensor"].flatMap((d) =>
     SENSITIVITY_SUFFIXES.map((s) => `${d}.${object}${s}`),
@@ -149,7 +157,11 @@ export function sensitivity(
     : [];
   for (const id of [...named, ...onDevice]) {
     const value = Number(states[id]?.state);
-    if (states[id]?.state && Number.isFinite(value) && value > 0) return value;
+    if (states[id]?.state && Number.isFinite(value) && value > 0) {
+      return id.endsWith("_deadzone_temperature")
+        ? { below: value, above: 0 }
+        : { below: value, above: value };
+    }
   }
   return undefined;
 }

@@ -108,9 +108,10 @@ Attached to the thermostat's device:
   occurrence of that day the measured temperature and the actual target from history,
   plus a "now" marker on today. Periods when the thermostat was heating (`hvac_action: heating`) are
   shaded orange, with the total heating time in the legend.
-- A band around the schedule shows the thermostat's sensitivity (target ± how far the room may drift
-  before heating switches on or off). It is read from a `number`/`sensor` entity ending in
-  `_deadzone_temperature` or `_temperature_delta`, named after the thermostat
+- A band along the schedule shows the thermostat's sensitivity: how far the room may drift before
+  heating switches on or off. It is read from a `number`/`sensor` entity ending in
+  `_temperature_delta` (± around the target) or `_deadzone_temperature` (below the target only:
+  heating starts that far below it and stops at the target), named after the thermostat
   (`climate.x` → `sensor.x_temperature_delta`) or on its device; without one there is no band. For a
   thermostat that does not expose it (e.g. Generic Thermostat), add a template sensor with the value.
 - Zoom the time axis with the mouse wheel (around the pointer) or a pinch on a phone; drag (mouse),
