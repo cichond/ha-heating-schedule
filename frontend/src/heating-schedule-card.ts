@@ -65,6 +65,8 @@ interface CardConfig {
   height?: number;
   /** Show a settings button that fires ``heating-schedule-settings`` (used by the panel). */
   settings?: boolean;
+  /** Dashboard chart card: today's chart and legend only, nothing to edit. */
+  readonly?: boolean;
 }
 
 export interface ScheduleInfo {
@@ -216,7 +218,7 @@ export class HeatingScheduleCard extends LitElement {
   private _range?: [number, number];
   private _scale?: Scale;
 
-  // -- configuration (set by the panel) --------------------------------------
+  // -- configuration (set by the panel, or a dashboard for the chart card) ----
 
   setConfig(config: CardConfig): void {
     if (!config?.entity) throw new Error("entity is required");
@@ -236,7 +238,10 @@ export class HeatingScheduleCard extends LitElement {
 
   connectedCallback(): void {
     super.connectedCallback();
-    this._historyTimer = window.setInterval(() => this._loadHistory(true), HISTORY_REFRESH_MS);
+    this._historyTimer = window.setInterval(() => {
+      if (this._config?.readonly) this._day = dayOf(new Date()); // a dashboard card follows today
+      this._loadHistory(true);
+    }, HISTORY_REFRESH_MS);
     this._resize = new ResizeObserver((entries) => {
       const width = Math.floor(entries[0].contentRect.width);
       if (width && width !== this._width) this._width = width;
@@ -426,6 +431,15 @@ export class HeatingScheduleCard extends LitElement {
       this._config.entity;
     // A disabled schedule: faded and darker, so it is obvious at a glance (not while editing).
     const off = !!this._info && !this._info.enabled && !this._draft;
+    if (this._config.readonly) {
+      return html`
+        <ha-card class="readonly ${off ? "disabled" : ""}">
+          ${this._config.name ? html`<div class="header"><div class="name">${name}</div></div>` : nothing}
+          ${this._error ? html`<div class="error">${this._error}</div>` : nothing}
+          ${this._info ? this._renderView() : nothing}
+        </ha-card>
+      `;
+    }
     return html`
       <ha-card class=${off ? "disabled" : ""}>
         <div class="header">
@@ -495,13 +509,19 @@ export class HeatingScheduleCard extends LitElement {
     `;
   }
 
+  /** The chart and its legend, as on the read-only dashboard card. */
+  private _renderView() {
+    return html`
+      <div class="chart ${this._draft ? "editing" : ""} ${this._zoomed ? "zoomed" : ""}">
+        ${this._width ? this._renderChart() : nothing}${this._renderTooltip()}${this._renderZoomReset()}
+      </div>
+      ${this._renderLegend()}
+    `;
+  }
+
   private _renderBody() {
     const t = this._t;
     const today = dayOf(new Date());
-    const history = this._history;
-    const historyHere = !!history && isoDate(history.date) === isoDate(lastDateOf(this._day));
-    const showHistoryDate = historyHere && this._day !== today;
-    const heatMinutes = historyHere ? history!.heating.reduce((sum, [a, b]) => sum + b - a, 0) : 0;
     return html`
       <div class="days">
         ${DAYS.map(
@@ -513,9 +533,19 @@ export class HeatingScheduleCard extends LitElement {
           </button>`,
         )}
       </div>
-      <div class="chart ${this._draft ? "editing" : ""} ${this._zoomed ? "zoomed" : ""}">
-        ${this._width ? this._renderChart() : nothing}${this._renderTooltip()}${this._renderZoomReset()}
-      </div>
+      ${this._renderView()}
+      ${this._renderSuggestions()}
+      ${this._draft ? this._renderEditor() : this._renderSummary()}
+    `;
+  }
+
+  private _renderLegend() {
+    const t = this._t;
+    const history = this._history;
+    const historyHere = !!history && isoDate(history.date) === isoDate(lastDateOf(this._day));
+    const showHistoryDate = historyHere && this._day !== dayOf(new Date());
+    const heatMinutes = historyHere ? history!.heating.reduce((sum, [a, b]) => sum + b - a, 0) : 0;
+    return html`
       <div class="legend">
         <span><i class="line schedule"></i>${t.legend_schedule}</span>
         <span><i class="line current"></i>${t.legend_current}</span>
@@ -538,8 +568,6 @@ export class HeatingScheduleCard extends LitElement {
           : nothing}
         ${showHistoryDate ? html`<span class="muted">${t.history_from} ${isoDate(history!.date)}</span>` : nothing}
       </div>
-      ${this._renderSuggestions()}
-      ${this._draft ? this._renderEditor() : this._renderSummary()}
     `;
   }
 
@@ -1779,4 +1807,59 @@ export class HeatingScheduleCard extends LitElement {
 
 if (!customElements.get("heating-schedule-card")) {
   customElements.define("heating-schedule-card", HeatingScheduleCard);
+}
+
+/** Dashboard card: today's chart of one thermostat with its legend, read-only. */
+export class HeatingScheduleChartCard extends HeatingScheduleCard {
+  static getConfigForm() {
+    return {
+      schema: [
+        { name: "entity", required: true, selector: { entity: { domain: "climate" } } },
+        { name: "name", selector: { text: {} } },
+        {
+          name: "height",
+          selector: { number: { min: 120, max: 600, mode: "box", unit_of_measurement: "px" } },
+        },
+      ],
+      // HA labels entity and name itself.
+      computeLabel: (field: { name: string }) => (field.name === "height" ? "Height" : undefined),
+    };
+  }
+
+  static getStubConfig(hass: Hass) {
+    const entity = Object.keys(hass.states).find((id) => id.startsWith("climate.")) ?? "";
+    return { entity };
+  }
+
+  setConfig(config: CardConfig): void {
+    super.setConfig({ ...config, settings: false, readonly: true });
+  }
+
+  getCardSize(): number {
+    return 4;
+  }
+
+  getGridOptions() {
+    return { columns: 12, min_columns: 4, rows: "auto" };
+  }
+}
+
+declare global {
+  interface Window {
+    customCards?: { type: string; name: string; description: string; preview?: boolean }[];
+  }
+}
+
+if (!customElements.get("heating-schedule-chart-card")) {
+  customElements.define("heating-schedule-chart-card", HeatingScheduleChartCard);
+}
+
+window.customCards = window.customCards ?? [];
+if (!window.customCards.some((card) => card.type === "heating-schedule-chart-card")) {
+  window.customCards.push({
+    type: "heating-schedule-chart-card",
+    name: "Heating Schedule chart",
+    description: "Today's heating schedule of a thermostat as a temperature chart (read-only).",
+    preview: true,
+  });
 }

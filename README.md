@@ -1,7 +1,8 @@
 # Heating Schedule
 
 Weekly target-temperature schedules for Home Assistant thermostats, with a sidebar panel
-that shows each schedule as a temperature-over-time chart and lets you edit it by dragging.
+that shows each schedule as a temperature-over-time chart and lets you edit it by dragging, plus a
+read-only chart card for dashboards.
 
 - One config entry per thermostat (`climate.*`).
 - Each day of the week is a list of change points (`HH:MM` → temperature); the first is at 00:00.
@@ -76,8 +77,7 @@ green, the typical occupancy of the selected weekday (stronger = more often occu
 3. Settings → Devices & services → *Add integration* → **Heating Schedule**, pick a thermostat.
    Repeat for each thermostat.
 
-The panel is served by the integration; no dashboard resource is needed. There is no dashboard card
-(removed in 0.14.0): the schedules live in the sidebar panel only.
+The panel and the dashboard chart card are served by the integration; no dashboard resource is needed.
 
 ## Sidebar panel
 
@@ -101,6 +101,19 @@ Attached to the thermostat's device:
 | `switch.<thermostat>_schedule` | schedule on/off |
 | `sensor.<thermostat>_scheduled_temperature` | target temperature the schedule asks for now; attributes `next_change`, `next_temperature` |
 | `binary_sensor.<thermostat>_occupancy` | only with room presence entities, see above |
+
+## Dashboard chart card
+
+A read-only card for any dashboard: today's chart of one thermostat with its legend, as on the panel
+(history, heating, presence, sensitivity band, tooltip and zoom), without day tabs, the schedule switch,
+editing or suggestions. Schedules are still edited in the panel. It moves on to the next day at midnight.
+
+```yaml
+type: custom:heating-schedule-chart-card
+entity: climate.bedroom_thermostat
+# name: Bedroom   # optional: shown as the card's title (no title by default)
+# height: 220     # optional, px
+```
 
 ## Thermostat cards (in the panel)
 

@@ -105,8 +105,9 @@
     document.getElementById("cards").append(panel);
   }
   for (const cfg of params.has("panel") ? [] : [{ entity: "climate.sypialnia_termostat" }]) {
-    const card = document.createElement("heating-schedule-card");
-    card.setConfig({ type: "custom:heating-schedule-card", settings: params.has("suggest") || params.has("ai") || params.has("aifull"), ...cfg });
+    // ?chart: the read-only dashboard chart card (?name=… shows a title)
+    const card = document.createElement(params.has("chart") ? "heating-schedule-chart-card" : "heating-schedule-card");
+    card.setConfig({ type: "custom:heating-schedule-card", name: params.get("name") ?? undefined, settings: params.has("suggest") || params.has("ai") || params.has("aifull"), ...cfg });
     card.hass = hass;
     document.getElementById("cards").append(card);
     // ?variant=a|b|c: mock-up styles for a disabled schedule (injected into the card)
