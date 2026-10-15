@@ -3,9 +3,9 @@ function t(t,e,s,i){var r,n=arguments.length,o=n<3?e:null===i?i=Object.getOwnPro
         <div class="header">
           <div class="name">${s}</div>
           <div class="header-end">
-            ${this._info?V`<label class="toggle">
-                  <span>${t.schedule}</span>
+            ${this._info?V`<label class="toggle" title=${t.schedule}>
                   <ha-switch
+                    aria-label=${t.schedule}
                     .checked=${this._info.enabled}
                     .disabled=${!!this._draft}
                     @change=${this._toggleEnabled}

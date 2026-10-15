@@ -418,9 +418,9 @@ export class HeatingScheduleCard extends LitElement {
           <div class="name">${name}</div>
           <div class="header-end">
             ${this._info
-              ? html`<label class="toggle">
-                  <span>${t.schedule}</span>
+              ? html`<label class="toggle" title=${t.schedule}>
                   <ha-switch
+                    aria-label=${t.schedule}
                     .checked=${this._info.enabled}
                     .disabled=${!!this._draft}
                     @change=${this._toggleEnabled}
