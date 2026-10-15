@@ -53,6 +53,10 @@ const STRINGS = {
     field_entity: "Thermostat",
     field_title: "Name",
     field_presence_entities: "Room presence entities (any of them)",
+    field_band_below: "Sensitivity below the target",
+    field_band_above: "Sensitivity above the target",
+    band_help:
+      "The band drawn along the schedule. Empty: from the thermostat's deadzone (below the target only) or temperature delta (± the target) entity.",
     presence_help:
       "The room is occupied when any presence entity is on (OR) (person / device tracker: home). These entities also build the typical-presence profile. They are shown on the chart and do not change the temperature.",
     remove_schedule: "Remove schedule",
@@ -114,6 +118,10 @@ const STRINGS = {
     field_entity: "Termostat",
     field_title: "Nazwa",
     field_presence_entities: "Encje obecności w pokoju (wystarczy dowolna)",
+    field_band_below: "Czułość poniżej zadanej",
+    field_band_above: "Czułość powyżej zadanej",
+    band_help:
+      "Pas rysowany wzdłuż harmonogramu. Puste: z encji termostatu deadzone (tylko poniżej zadanej) albo temperature delta (± zadana).",
     presence_help:
       "Pokój jest zajęty, gdy którakolwiek encja obecności jest włączona (LUB) (osoba / urządzenie: w domu). Z tych encji powstaje też profil typowej obecności. Są pokazywane na wykresie i nie zmieniają temperatury.",
     remove_schedule: "Usuń harmonogram",

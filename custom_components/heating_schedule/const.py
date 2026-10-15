@@ -35,6 +35,12 @@ ATTR_NEXT_TEMPERATURE = "next_temperature"
 
 # Options (per thermostat)
 CONF_PRESENCE_ENTITIES = "presence_entities"
+# Sensitivity band shown on the card, degrees below/above the target; unset = from the
+# thermostat's deadzone/temperature delta entity.
+CONF_BAND_BELOW = "band_below"
+CONF_BAND_ABOVE = "band_above"
+BAND_KEYS = (CONF_BAND_BELOW, CONF_BAND_ABOVE)
+BAND_MAX = 10.0
 
 PROFILE_STORAGE_KEY = f"{DOMAIN}.profile"
 STATS_STORAGE_KEY = f"{DOMAIN}.stats"

@@ -77,13 +77,14 @@
   "options": {
     "step": {
       "init": {
-        "title": "Obecność",
-        "description": "Encje obecności: pokój jest zajęty, gdy którakolwiek jest włączona (osoba/urządzenie: w domu). Z nich powstaje profil obecności na karcie. Stan nieznany/niedostępny nigdy nie liczy się jako nieobecność.",
+        "title": "Obecność i czułość",
+        "description": "Encje obecności: pokój jest zajęty, gdy którakolwiek jest włączona (osoba/urządzenie: w domu). Z nich powstaje profil obecności na karcie. Stan nieznany/niedostępny nigdy nie liczy się jako nieobecność.\n\nCzułość: pas rysowany wzdłuż harmonogramu. Puste pole: wartość z encji termostatu `_deadzone_temperature` (tylko poniżej zadanej) albo `_temperature_delta` (± zadana).",
         "data": {
-          "presence_entities": "Encje obecności w pokoju"
+          "presence_entities": "Encje obecności w pokoju",
+          "band_below": "Czułość poniżej zadanej",
+          "band_above": "Czułość powyżej zadanej"
         },
-        "data_description": {
-        }
+        "data_description": {}
       }
     }
   }

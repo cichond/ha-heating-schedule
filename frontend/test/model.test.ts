@@ -5,6 +5,7 @@ import {
   dayOf,
   dropEmpty,
   formatDuration,
+  bandOf,
   formatTime,
   sensitivity,
   moveEdge,
@@ -101,4 +102,13 @@ test("sensitivity from a named or device entity", () => {
   assert.deepEqual(sensitivity("climate.pokoj_p2_termostat", states, entities), { below: 1.5, above: 1.5 });
   assert.equal(sensitivity("climate.broken", states, entities), undefined);
   assert.equal(sensitivity("climate.none", states, entities), undefined);
+});
+
+test("bandOf: settings win per side", () => {
+  const deadzone = { below: 1, above: 0 };
+  assert.deepEqual(bandOf(undefined, deadzone), deadzone);
+  assert.deepEqual(bandOf({ below: null, above: 0.5 }, deadzone), { below: 1, above: 0.5 });
+  assert.deepEqual(bandOf({ below: 0.3 }, undefined), { below: 0.3, above: 0 });
+  assert.deepEqual(bandOf({ below: 0, above: 0 }, deadzone), undefined);
+  assert.equal(bandOf(undefined, undefined), undefined);
 });

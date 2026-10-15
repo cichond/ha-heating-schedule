@@ -23,6 +23,12 @@ type Dialog =
   | { kind: "add"; data: Record<string, unknown> };
 
 const PRESENCE_DOMAINS = ["binary_sensor", "person", "device_tracker", "input_boolean", "switch", "light"];
+const BAND_MAX = 10;
+
+/** A sensitivity field: a number, or null when cleared (then read from the thermostat). */
+function bandValue(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
 
 /**
  * ``ha-form`` and its selectors are lazy-loaded by the HA frontend. Opening a
@@ -183,6 +189,8 @@ export class HeatingSchedulePanel extends LitElement {
       data: {
         title: info.title,
         presence_entities: info.presence.entities,
+        band_below: info.band?.below ?? undefined,
+        band_above: info.band?.above ?? undefined,
       },
     };
   };
@@ -240,11 +248,20 @@ export class HeatingSchedulePanel extends LitElement {
         name: "presence_entities",
         selector: { entity: { multiple: true, filter: [{ domain: PRESENCE_DOMAINS }] } },
       },
+      ...["band_below", "band_above"].map((name) => ({
+        name,
+        selector: {
+          number: { min: 0, max: BAND_MAX, step: 0.1, mode: "box", unit_of_measurement: "°" },
+        },
+      })),
     ];
   }
 
   private _label = (field: { name: string }) =>
     (this._t as Record<string, unknown>)[`field_${field.name}`] as string ?? field.name;
+
+  private _helper = (field: { name: string }) =>
+    field.name.startsWith("band_") ? this._t.band_help : undefined;
 
   private async _run(action: () => Promise<unknown>): Promise<void> {
     this._busy = true;
@@ -280,6 +297,8 @@ export class HeatingSchedulePanel extends LitElement {
         entity_id: dialog.info.climate_entity,
         title,
         presence_entities: (data.presence_entities as string[] | undefined) ?? [],
+        band_below: bandValue(data.band_below),
+        band_above: bandValue(data.band_above),
       }),
     );
   }
@@ -340,6 +359,7 @@ export class HeatingSchedulePanel extends LitElement {
           .data=${dialog.data}
           .schema=${this._schema(dialog)}
           .computeLabel=${this._label}
+          .computeHelper=${this._helper}
           .disabled=${this._busy}
           @value-changed=${(ev: CustomEvent) => {
             this._dialog = { ...dialog, data: ev.detail.value } as Dialog;

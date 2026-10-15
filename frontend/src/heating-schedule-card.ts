@@ -18,6 +18,7 @@ import {
   fromPts,
   moveEdge,
   removeSegment,
+  bandOf,
   segmentEnd,
   sensitivity,
   type Band,
@@ -79,6 +80,8 @@ export interface ScheduleInfo {
   };
   profile: { days: Record<Day, number[]>; weeks: number } | null;
   limits: { min: number | null; max: number | null; step: number };
+  /** Sensitivity band set in the settings (degrees); null = from the thermostat's entity. */
+  band?: { below: number | null; above: number | null };
   switch_entity: string | null;
   sensor_entity: string | null;
   occupancy_entity: string | null;
@@ -378,7 +381,17 @@ export class HeatingScheduleCard extends LitElement {
   /** The thermostat's switching sensitivity, shown as a band around the schedule. */
   private get _band(): Band | undefined {
     if (!this.hass || !this._config) return undefined;
-    return sensitivity(this._config.entity, this.hass.states, this.hass.entities);
+    return bandOf(
+      this._info?.band,
+      sensitivity(this._config.entity, this.hass.states, this.hass.entities),
+    );
+  }
+
+  private _fmtBand({ below, above }: Band): string {
+    if (below === above) return `±${this._fmtTemp(below)}`;
+    if (!above) return `−${this._fmtTemp(below)}`;
+    if (!below) return `+${this._fmtTemp(above)}`;
+    return `−${this._fmtTemp(below)} / +${this._fmtTemp(above)}`;
   }
 
   private _yRange(pts: Pt[]): [number, number] {
@@ -509,7 +522,7 @@ export class HeatingScheduleCard extends LitElement {
         <span><i class="line target"></i>${t.legend_target}</span>
         ${this._band
           ? html`<span><i class="swatch band"></i>${t.legend_band}
-              <b>${this._band.above ? "±" : "−"}${this._fmtTemp(this._band.below)}</b></span>`
+              <b>${this._fmtBand(this._band)}</b></span>`
           : nothing}
         ${heatMinutes
           ? html`<span><i class="swatch heating"></i>${t.legend_heating} <b>${formatDuration(heatMinutes)}</b></span>`

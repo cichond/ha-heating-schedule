@@ -77,13 +77,14 @@
   "options": {
     "step": {
       "init": {
-        "title": "Presence",
-        "description": "Presence entities: the room counts as occupied when any of them is on (person/device tracker: home). They feed the occupancy profile shown on the card. Unknown/unavailable states never count as absence.",
+        "title": "Presence and sensitivity",
+        "description": "Presence entities: the room counts as occupied when any of them is on (person/device tracker: home). They feed the occupancy profile shown on the card. Unknown/unavailable states never count as absence.\n\nSensitivity: the band drawn along the schedule. Leave a side empty to read it from the thermostat's `_deadzone_temperature` (below the target only) or `_temperature_delta` (± the target) entity.",
         "data": {
-          "presence_entities": "Room presence entities"
+          "presence_entities": "Room presence entities",
+          "band_below": "Sensitivity below the target",
+          "band_above": "Sensitivity above the target"
         },
-        "data_description": {
-        }
+        "data_description": {}
       }
     }
   }

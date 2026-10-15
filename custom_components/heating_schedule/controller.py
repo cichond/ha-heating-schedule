@@ -49,6 +49,8 @@ from homeassistant.helpers.start import async_at_started
 from homeassistant.util import dt as dt_util
 
 from .const import (
+    CONF_BAND_ABOVE,
+    CONF_BAND_BELOW,
     CONF_CLIMATE_ENTITY,
     CONF_PRESENCE_ENTITIES,
     DEFAULT_STEP,
@@ -112,6 +114,10 @@ class ScheduleController:
 
         options = entry.options
         self.presence_entities: list[str] = list(options.get(CONF_PRESENCE_ENTITIES, []))
+        self.band: dict[str, float | None] = {
+            "below": options.get(CONF_BAND_BELOW),
+            "above": options.get(CONF_BAND_ABOVE),
+        }
 
         self.room = (
             RoomPresence(hass, self.presence_entities, self._notify)
@@ -201,6 +207,7 @@ class ScheduleController:
             "ai_available": self.ai_available,
             "ai_full": self._ai_full(),
             "limits": self.limits(),
+            "band": self.band,
             "switch_entity": registry.async_get_entity_id(
                 "switch", DOMAIN, f"{self.entry.entry_id}_enabled"
             ),

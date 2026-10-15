@@ -16,6 +16,8 @@ from homeassistant.helpers.dispatcher import async_dispatcher_connect
 import voluptuous as vol
 
 from .const import (
+    BAND_KEYS,
+    BAND_MAX,
     CONF_CLIMATE_ENTITY,
     CONF_PRESENCE_ENTITIES,
     DOMAIN,
@@ -128,22 +130,33 @@ def ws_subscribe(
         vol.Required("entity_id"): cv.entity_id,
         vol.Optional("title"): vol.All(cv.string, vol.Length(min=1)),
         vol.Optional(CONF_PRESENCE_ENTITIES): [cv.entity_id],
+        # None clears a band side (it then comes from the thermostat's entity again).
+        **{
+            vol.Optional(key): vol.Any(
+                None, vol.All(vol.Coerce(float), vol.Range(min=0, max=BAND_MAX))
+            )
+            for key in BAND_KEYS
+        },
     }
 )
 @callback
 def ws_configure(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
 ) -> None:
-    """Rename a thermostat or change its presence entities (the entry reloads)."""
+    """Rename a thermostat or change its options (the entry reloads)."""
     if (entry := async_find_entry(hass, msg["entity_id"])) is None:
         connection.send_error(msg["id"], "not_found", f"No schedule for {msg['entity_id']}")
         return
     # Rebuilt from the known keys, which also drops options of removed features.
-    options = {
+    options: dict[str, Any] = {
         CONF_PRESENCE_ENTITIES: msg.get(
             CONF_PRESENCE_ENTITIES, entry.options.get(CONF_PRESENCE_ENTITIES, [])
         )
     }
+    for key in BAND_KEYS:
+        value = msg[key] if key in msg else entry.options.get(key)
+        if value is not None:
+            options[key] = value
     hass.config_entries.async_update_entry(
         entry, title=msg.get("title", entry.title), options=options
     )

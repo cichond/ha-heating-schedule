@@ -1,4 +1,4 @@
-"""Config flow: one entry per thermostat; options: presence."""
+"""Config flow: one entry per thermostat; options: presence, sensitivity band."""
 
 from __future__ import annotations
 
@@ -9,10 +9,15 @@ from homeassistant.core import callback
 from homeassistant.helpers.selector import (
     EntitySelector,
     EntitySelectorConfig,
+    NumberSelector,
+    NumberSelectorConfig,
+    NumberSelectorMode,
 )
 import voluptuous as vol
 
 from .const import (
+    BAND_KEYS,
+    BAND_MAX,
     CONF_CLIMATE_ENTITY,
     CONF_PRESENCE_ENTITIES,
     DOMAIN,
@@ -58,7 +63,7 @@ class HeatingScheduleConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class HeatingScheduleOptionsFlow(OptionsFlow):
-    """Presence entities (shown on the card; they do not change the temperature)."""
+    """Presence entities and the sensitivity band (both only shown on the card)."""
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         if user_input is not None:
@@ -69,6 +74,20 @@ class HeatingScheduleOptionsFlow(OptionsFlow):
                 vol.Optional(
                     CONF_PRESENCE_ENTITIES, default=options.get(CONF_PRESENCE_ENTITIES, [])
                 ): EntitySelector(EntitySelectorConfig(domain=PRESENCE_DOMAINS, multiple=True)),
+                **{
+                    vol.Optional(
+                        key, description={"suggested_value": options.get(key)}
+                    ): NumberSelector(
+                        NumberSelectorConfig(
+                            min=0,
+                            max=BAND_MAX,
+                            step=0.1,
+                            unit_of_measurement="°",
+                            mode=NumberSelectorMode.BOX,
+                        )
+                    )
+                    for key in BAND_KEYS
+                },
             }
         )
         return self.async_show_form(step_id="init", data_schema=schema)

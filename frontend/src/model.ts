@@ -165,3 +165,17 @@ export function sensitivity(
   }
   return undefined;
 }
+
+/**
+ * The band to draw: each side set in the thermostat's settings wins, an unset
+ * side comes from the detected entity (missing there: 0). Undefined when the
+ * band is empty.
+ */
+export function bandOf(
+  configured: { below?: number | null; above?: number | null } | undefined,
+  detected: Band | undefined,
+): Band | undefined {
+  const below = configured?.below ?? detected?.below ?? 0;
+  const above = configured?.above ?? detected?.above ?? 0;
+  return below > 0 || above > 0 ? { below, above } : undefined;
+}

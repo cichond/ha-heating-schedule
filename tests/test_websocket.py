@@ -118,3 +118,35 @@ async def test_clearing_presence_removes_its_data(
     assert info["occupancy_entity"] is None
     assert info["profile"] is None
     assert entry.entry_id not in entry.runtime_data._store._profiles
+
+
+async def test_configure_band(hass: HomeAssistant, hass_ws_client: WebSocketGenerator) -> None:
+    entry = await _setup(hass)
+    client = await hass_ws_client(hass)
+
+    async def configure(**fields) -> None:
+        await client.send_json_auto_id(
+            {"type": f"{DOMAIN}/configure", "entity_id": CLIMATE, **fields}
+        )
+        while "success" not in (message := await client.receive_json(timeout=5)):
+            pass
+        assert message["success"]
+        await hass.async_block_till_done()
+
+    await configure(band_below=0.5, band_above=0.3)
+    assert entry.options == {"presence_entities": [], "band_below": 0.5, "band_above": 0.3}
+
+    await configure(title="Biuro")  # other changes keep the band
+    assert entry.options["band_below"] == 0.5
+
+    await configure(band_above=None)  # cleared: from the thermostat's entity again
+    assert entry.options == {"presence_entities": [], "band_below": 0.5}
+
+    await client.send_json_auto_id({"type": f"{DOMAIN}/get", "entity_id": CLIMATE})
+    info = (await client.receive_json())["result"]
+    assert info["band"] == {"below": 0.5, "above": None}
+
+    await client.send_json_auto_id(
+        {"type": f"{DOMAIN}/configure", "entity_id": CLIMATE, "band_below": -1}
+    )
+    assert not (await client.receive_json())["success"]

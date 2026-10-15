@@ -86,7 +86,7 @@ runs in Polish) with the card of every configured thermostat, grouped by the flo
 level, then rooms by name; thermostats without a floor last). Everything is configured there:
 
 - **+** in the header adds a thermostat,
-- the cog on a card renames it, sets its presence entities, or removes its schedule.
+- the cog on a card renames it, sets its presence entities and sensitivity band, or removes its schedule.
 
 Adding, renaming and changing presence apply immediately (the entry reloads); no restart is needed.
 These actions need an admin user. The same settings are also available under Settings → Devices &
@@ -109,11 +109,11 @@ Attached to the thermostat's device:
   plus a "now" marker on today. Periods when the thermostat was heating (`hvac_action: heating`) are
   shaded orange, with the total heating time in the legend.
 - A band along the schedule shows the thermostat's sensitivity: how far the room may drift before
-  heating switches on or off. It is read from a `number`/`sensor` entity ending in
+  heating switches on or off. Set it in the thermostat's settings (sensitivity below / above the
+  target). A side left empty is read from a `number`/`sensor` entity ending in
   `_temperature_delta` (± around the target) or `_deadzone_temperature` (below the target only:
   heating starts that far below it and stops at the target), named after the thermostat
-  (`climate.x` → `sensor.x_temperature_delta`) or on its device; without one there is no band. For a
-  thermostat that does not expose it (e.g. Generic Thermostat), add a template sensor with the value.
+  (`climate.x` → `sensor.x_temperature_delta`) or on its device; with neither there is no band.
 - Zoom the time axis with the mouse wheel (around the pointer) or a pinch on a phone; drag (mouse),
   scroll sideways or shift+wheel to move a zoomed chart. Double-click or the magnifier button shows the
   whole day again; the zoom stays when switching days.
