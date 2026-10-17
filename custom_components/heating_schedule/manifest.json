@@ -12,6 +12,7 @@
   "dependencies": [
     "frontend",
     "http",
+    "lovelace",
     "panel_custom",
     "websocket_api"
   ],

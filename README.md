@@ -77,7 +77,8 @@ green, the typical occupancy of the selected weekday (stronger = more often occu
 3. Settings → Devices & services → *Add integration* → **Heating Schedule**, pick a thermostat.
    Repeat for each thermostat.
 
-The panel and the dashboard chart card are served by the integration; no dashboard resource is needed.
+The panel and the dashboard chart card are served by the integration, which also adds the card to the
+dashboard resources itself (and keeps its version up to date); nothing has to be added by hand.
 
 ## Sidebar panel
 

@@ -192,3 +192,18 @@ async def test_entities_join_thermostat_device(hass: HomeAssistant, freezer) -> 
     switch = registry.async_get("switch.bedroom_thermostat_schedule")
     assert switch is not None
     assert switch.device_id == device.id
+
+
+async def test_dashboard_resource(hass: HomeAssistant, setup) -> None:
+    from custom_components.heating_schedule import _async_register_resource
+
+    resources = hass.data["lovelace"].resources
+    urls = [item["url"] for item in resources.async_items()]
+    assert len(urls) == 1
+    assert urls[0].startswith("/heating_schedule_static/heating-schedule-card.js?v=")
+
+    # A new version replaces the old URL instead of adding a second resource.
+    await _async_register_resource(hass, "/heating_schedule_static/heating-schedule-card.js?v=9")
+    assert [item["url"] for item in resources.async_items()] == [
+        "/heating_schedule_static/heating-schedule-card.js?v=9"
+    ]

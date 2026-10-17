@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
+from typing import Any
 
 from homeassistant.components import panel_custom
 from homeassistant.components.frontend import add_extra_js_url
@@ -29,6 +31,8 @@ from .services import async_register_services
 from .store import ScheduleStore
 from .websocket import async_register_websocket
 
+_LOGGER = logging.getLogger(__name__)
+
 PLATFORMS = [Platform.BINARY_SENSOR, Platform.SENSOR, Platform.SWITCH]
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
@@ -51,7 +55,9 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         ]
     )
     module_url = f"{FRONTEND_URL_BASE}/{CARD_FILENAME}?v={integration.version}"
-    # The read-only dashboard chart card, on every page.
+    # The read-only dashboard chart card: a dashboard resource (loaded with every dashboard,
+    # also where the app keeps an old page cached) and, for YAML dashboards, on every page.
+    await _async_register_resource(hass, module_url)
     add_extra_js_url(hass, module_url)
     # Sidebar panel with the cards of all thermostats (same module).
     await panel_custom.async_register_panel(
@@ -67,6 +73,25 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     async_register_websocket(hass)
     async_register_services(hass)
     return True
+
+
+async def _async_register_resource(hass: HomeAssistant, url: str) -> None:
+    """Add the card module to the dashboard resources, or update its version there."""
+    lovelace: Any = hass.data.get("lovelace")
+    resources = getattr(lovelace, "resources", None)
+    if resources is None and isinstance(lovelace, dict):  # older Home Assistant
+        resources = lovelace.get("resources")
+    if resources is None or not hasattr(resources, "async_create_item"):
+        return  # YAML resources: only the extra module URL
+    await resources.async_get_info()  # loads the collection
+    base = url.split("?")[0]
+    for item in resources.async_items():
+        if item.get("url", "").split("?")[0] == base:
+            if item["url"] != url:
+                await resources.async_update_item(item["id"], {"res_type": "module", "url": url})
+            return
+    await resources.async_create_item({"res_type": "module", "url": url})
+    _LOGGER.info("Added the dashboard resource %s", url)
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: HeatingScheduleConfigEntry) -> bool:
