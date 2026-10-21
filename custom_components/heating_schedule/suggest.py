@@ -3,17 +3,19 @@
 No Home Assistant imports (and no imports of sibling modules), so it can be
 tested in isolation.
 
-Every suggestion is one operation applied to one or more weekdays: set the
-temperature of [start, end) to ``temp``. That covers moving a schedule point
-(``shift``), a new setback in a typically empty period (``setback``) and a
-different temperature where people keep changing it (``temp``). A suggestion
-stays valid while the schedule around it is unchanged (``expect``), so
-applying one does not invalidate another on a different part of the day.
+Every suggestion is one operation applied to the whole week, the workdays
+(Mon-Fri) or the weekend: set the temperature of [start, end) to ``temp``.
+That covers moving a schedule point (``shift``), a new setback in a typically
+empty period (``setback``) and a different temperature where people keep
+changing it (``temp``). A change found on only some days of a group is not
+suggested. A suggestion stays valid while the schedule around it is unchanged
+(``expect``), so applying one does not invalidate another on a different part
+of the day.
 """
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 import hashlib
@@ -21,6 +23,7 @@ import math
 from typing import Any
 
 DAY_NAMES = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
+DAY_GROUPS = (DAY_NAMES, DAY_NAMES[:5], DAY_NAMES[5:])  # whole week, workdays, weekend
 SLOT_MINUTES = 15
 SLOTS_PER_DAY = 24 * 60 // SLOT_MINUTES
 DAY_MINUTES = 24 * 60
@@ -334,6 +337,31 @@ def _manual_ops(
 # -- assembling -------------------------------------------------------------------
 
 
+def day_group(days: Iterable[str]) -> list[str] | None:
+    """The first of the whole week, Mon-Fri and the weekend that ``days`` fully contains."""
+    found = set(days)
+    for group in DAY_GROUPS:
+        if found.issuperset(group):
+            return list(group)
+    return None
+
+
+def _for_day_groups(found: Iterable[list[tuple[str, Suggestion]]]) -> list[Suggestion]:
+    """One suggestion per change (its (day, op) list) for the day group it covers, best first."""
+    result: list[Suggestion] = []
+    for entries in found:
+        days = day_group(day for day, _ in entries)
+        if days is None:
+            continue
+        covered = [op for day, op in entries if day in days]
+        suggestion = covered[0]
+        suggestion.days = days
+        suggestion.keys = [key for op in covered for key in op.keys]
+        suggestion.gain = sum(op.gain for op in covered)
+        result.append(suggestion)
+    return sorted(result, key=lambda s: s.gain, reverse=True)
+
+
 def _op(
     kind: str,
     points: Points,
@@ -362,9 +390,10 @@ def analyze(
     dismissed: Mapping[str, str] | None = None,
     now: datetime | None = None,
 ) -> list[Suggestion]:
-    """All suggestions, best first. The same change on several days is one suggestion."""
+    """All suggestions, best first. A change is suggested for the whole week, Mon-Fri or
+    the weekend when it was found on every day of that group."""
     recent = _recent_dismissals(dismissed or {}, now)
-    grouped: dict[tuple[Any, ...], Suggestion] = {}
+    grouped: dict[tuple[Any, ...], list[tuple[str, Suggestion]]] = {}
     for index, day in enumerate(DAY_NAMES):
         points = parse_day(days[day])
         ops: list[Suggestion] = []
@@ -376,15 +405,10 @@ def analyze(
             key = f"{day}:{op.keys[0]}"
             if key in recent:
                 continue
+            op.days, op.keys = [day], [key]
             group = (op.kind, op.start, op.end, op.temp, tuple(op.expect))
-            if group in grouped:
-                grouped[group].days.append(day)
-                grouped[group].keys.append(key)
-                grouped[group].gain += op.gain
-            else:
-                op.days, op.keys = [day], [key]
-                grouped[group] = op
-    return sorted(grouped.values(), key=lambda s: s.gain, reverse=True)
+            grouped.setdefault(group, []).append((day, op))
+    return _for_day_groups(grouped.values())
 
 
 def visible(
@@ -392,8 +416,8 @@ def visible(
     days: Mapping[str, Sequence[Mapping[str, Any]]],
     limit: int = VISIBLE,
 ) -> list[Suggestion]:
-    """The first ``limit`` suggestions that still apply to the schedule."""
-    return [s for s in queue if is_valid(s, days)][:limit]
+    """The first ``limit`` suggestions for a day group that still apply to the schedule."""
+    return [s for s in queue if s.days == day_group(s.days) and is_valid(s, days)][:limit]
 
 
 def _recent_dismissals(dismissed: Mapping[str, str], now: datetime | None) -> set[str]:
@@ -457,12 +481,12 @@ def suggestions_from_week(
 
     Each run of 15-minute slots with the same proposed temperature that differs
     from the schedule becomes one change, subject to the usual thresholds
-    (30 minutes, 1 degree / the step). The same change on several days is one
-    suggestion; dismissed ones are skipped.
+    (30 minutes, 1 degree / the step). Like in ``analyze``, a change is suggested
+    for the whole week, Mon-Fri or the weekend; dismissed ones are skipped.
     """
     recent = _recent_dismissals(dismissed or {}, now)
     threshold = max(MIN_TEMP_CHANGE, limits.step)
-    grouped: dict[tuple[Any, ...], Suggestion] = {}
+    grouped: dict[tuple[Any, ...], list[tuple[str, Suggestion]]] = {}
     for day in DAY_NAMES:
         current, new = parse_day(days[day]), parse_day(proposed[day])
         slots = [
@@ -484,15 +508,8 @@ def suggestions_from_week(
                 params = {"start": a, "end": b, "temp": value, "from_temp": old}
                 op = _op("temp", current, a, b, value, gain, params, f"ai:{a}:{b}:{value}")
                 key = f"{day}:{op.keys[0]}"
-                group = (a, b, value, tuple(op.expect))
-                if key in recent:
-                    pass
-                elif group in grouped:
-                    grouped[group].days.append(day)
-                    grouped[group].keys.append(key)
-                    grouped[group].gain += gain
-                else:
+                if key not in recent:
                     op.days, op.keys, op.source = [day], [key], "ai"
-                    grouped[group] = op
+                    grouped.setdefault((a, b, value, tuple(op.expect)), []).append((day, op))
             slot = run
-    return sorted(grouped.values(), key=lambda s: s.gain, reverse=True)[:limit]
+    return _for_day_groups(grouped.values())[:limit]

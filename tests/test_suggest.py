@@ -186,6 +186,51 @@ def test_weekdays_and_weekend_are_separate_suggestions() -> None:
     assert result[0].days == ["mon", "tue", "wed", "thu", "fri"]
 
 
+WORKDAYS = ["mon", "tue", "wed", "thu", "fri"]
+
+
+def office_on(*names: str) -> list[list[float]]:
+    """The office occupancy on ``names``, someone at home all day on the other days."""
+    work = [office(i / 4) for i in range(96)]
+    return [work if name in names else [0.9] * 96 for name in NAMES]
+
+
+def test_a_change_on_only_some_workdays_is_not_suggested() -> None:
+    for names in (WORKDAYS[:4], ["tue"]):
+        result = suggest.analyze(
+            week(OFFICE), STEP1, occupancy=office_on(*names), occupancy_weeks=4
+        )
+        assert result == []
+
+
+def test_a_change_from_monday_to_saturday_covers_the_workdays() -> None:
+    result = suggest.analyze(
+        week(OFFICE), STEP1, occupancy=office_on(*WORKDAYS, "sat"), occupancy_weeks=4
+    )
+    assert len(result) == 3
+    assert all(s.days == WORKDAYS for s in result)
+    first = result[0]
+    assert [key.split(":")[0] for key in first.keys] == WORKDAYS
+    assert first.gain == 5 * 4.5
+
+
+def test_a_change_on_the_weekend_covers_the_weekend() -> None:
+    result = suggest.analyze(
+        week(OFFICE), STEP1, occupancy=office_on("sat", "sun"), occupancy_weeks=4
+    )
+    assert result
+    assert all(s.days == ["sat", "sun"] for s in result)
+    assert [key.split(":")[0] for key in result[0].keys] == ["sat", "sun"]
+
+
+def test_stored_suggestions_for_single_days_are_not_shown() -> None:
+    first = suggest.analyze(week(OFFICE), STEP1, occupancy=profile(office), occupancy_weeks=4)[0]
+    tuesday = suggest.Suggestion.from_dict({**first.as_dict(), "days": ["tue"]})
+    assert suggest.is_valid(tuesday, week(OFFICE))
+    assert suggest.visible([tuesday], week(OFFICE)) == []
+    assert suggest.visible([first], week(OFFICE)) == [first]
+
+
 def test_round_trip() -> None:
     result = suggest.analyze(week(OFFICE), STEP1, occupancy=profile(office), occupancy_weeks=4)
     again = suggest.Suggestion.from_dict(result[0].as_dict())
@@ -236,3 +281,9 @@ def test_suggestions_from_a_proposed_week() -> None:
         week(OFFICE), proposed, STEP1, dismissed=dismissed, now=NOW
     )
     assert result[0].id not in [s.id for s in again]
+
+
+def test_a_proposal_for_one_day_is_not_suggested() -> None:
+    proposed = week(OFFICE)
+    proposed["wed"] = day(("00:00", 18), ("09:00", 21), ("16:00", 18), ("20:30", 20))
+    assert suggest.suggestions_from_week(week(OFFICE), proposed, STEP1) == []

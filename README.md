@@ -49,10 +49,11 @@ is changed until someone applies one:
 - **setback**: lower the temperature in a long (≥3 h), typically empty stretch,
 - **temperature**: where people keep turning it up or down, move the schedule about 75% of the way.
 
-Only changes of at least 30 minutes or 1° (and the thermostat step) are suggested; the same change on
-several weekdays is one suggestion. At most two are shown at a time. Occupancy suggestions need three
-weeks of profile, temperature suggestions three weeks of manual deviations. After the schedule changes
-there are no new suggestions for two weeks; a dismissed suggestion stays away for four weeks.
+Only changes of at least 30 minutes or 1° (and the thermostat step) are suggested. A suggestion always
+covers the whole week, Mon–Fri or the weekend; a change found on only some of those days is not
+suggested. At most two are shown at a time. Occupancy suggestions need three weeks of profile,
+temperature suggestions three weeks of manual deviations. After the schedule changes there are no new
+suggestions for two weeks; a dismissed suggestion stays away for four weeks.
 
 On the cards of the sidebar panel each suggestion gets a numbered marker on the chart (the changed range
 is outlined) and a line under it with **Apply** / **Dismiss**.
@@ -63,9 +64,10 @@ With an [AI Task](https://www.home-assistant.io/integrations/ai_task/) entity in
 one from its settings, else the first), the panel cards get an AI button: the integration sends the room
 (thermostat, area and floor names), the schedule, the hourly typical occupancy, frequent manual changes, the
 heat-up rate and the thermostat limits to `ai_task.generate_data` and turns the week it proposes into up to
-three suggestions (marked with the AI icon; same thresholds and dismissals as above). When adding a
-thermostat in the panel you can also choose **Proposed by the AI**: the thermostat starts with an empty
-schedule and the proposed week waits on its card for **Apply**. Nothing is sent to the AI unless you ask.
+three suggestions (marked with the AI icon; same thresholds, day groups and dismissals as above). When
+adding a thermostat in the panel you can also choose **Proposed by the AI**: the thermostat starts with an
+empty schedule and the proposed week waits on its card for **Apply**. Nothing is sent to the AI unless you
+ask.
 
 Under the chart the card draws two strips: the actual presence of that day and, below it in a darker
 green, the typical occupancy of the selected weekday (stronger = more often occupied).
