@@ -6,5 +6,5 @@ __pycache__/
 frontend/dev/*.png
 .superpowers/
 CLAUDE.local.md
-factory/
+.claude/factory/
 docs/superpowers/
