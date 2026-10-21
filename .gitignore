@@ -5,3 +5,5 @@ __pycache__/
 *.pyc
 frontend/dev/*.png
 .superpowers/
+AGENTS.md
+factory/
