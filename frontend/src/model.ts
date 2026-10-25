@@ -179,3 +179,16 @@ export function bandOf(
   const above = configured?.above ?? detected?.above ?? 0;
   return below > 0 || above > 0 ? { below, above } : undefined;
 }
+
+/**
+ * Where a moment falls on the chart of the day starting at ``dayStart`` (local midnight):
+ * its wall-clock minute, clamped to [0, DAY_MIN]. Elapsed minutes would shift everything after a
+ * DST change by an hour; ``floor`` keeps a series from going back in the repeated autumn hour.
+ */
+export function wallMinute(ms: number, dayStart: Date, floor = 0): number {
+  const end = new Date(dayStart.getFullYear(), dayStart.getMonth(), dayStart.getDate() + 1);
+  if (ms <= dayStart.getTime()) return Math.max(0, floor);
+  if (ms >= end.getTime()) return DAY_MIN;
+  const d = new Date(ms);
+  return Math.max(d.getHours() * 60 + d.getMinutes() + d.getSeconds() / 60, floor);
+}

@@ -27,6 +27,7 @@ import {
   splitSegment,
   tempAt,
   toPts,
+  wallMinute,
   weeksEqual,
 } from "./model";
 import { describeSuggestion, markerOf, type Suggestion } from "./suggestions";
@@ -326,9 +327,9 @@ export class HeatingScheduleCard extends LitElement {
       const target: [number, number][] = [];
       const heating: [number, number][] = [];
       let heatFrom: number | undefined;
+      let last = 0;
       for (const row of result[entity] ?? []) {
-        const ts = (row.lu ?? row.lc ?? 0) * 1000;
-        const m = clamp((ts - date.getTime()) / 60000, 0, DAY_MIN);
+        const m = (last = wallMinute((row.lu ?? row.lc ?? 0) * 1000, date, last));
         const attrs = row.a ?? {};
         if (typeof attrs.current_temperature === "number") current.push([m, attrs.current_temperature]);
         if (typeof attrs.temperature === "number") target.push([m, attrs.temperature]);
@@ -340,8 +341,7 @@ export class HeatingScheduleCard extends LitElement {
         }
       }
       if (heatFrom !== undefined && endMinute > heatFrom) heating.push([heatFrom, endMinute]);
-      const toMinute = (row: HistoryRow) =>
-        clamp(((row.lu ?? row.lc ?? 0) * 1000 - date.getTime()) / 60000, 0, DAY_MIN);
+      const toMinute = (row: HistoryRow) => wallMinute((row.lu ?? row.lc ?? 0) * 1000, date);
       const occupied: [number, number][] = [];
       const rows = occupancy ? (result[occupancy] ?? []) : [];
       rows.forEach((row, i) => {

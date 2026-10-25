@@ -14,6 +14,7 @@ import {
   splitSegment,
   tempAt,
   toPts,
+  wallMinute,
 } from "../src/model.ts";
 
 const day: Pt[] = toPts([
@@ -111,4 +112,25 @@ test("bandOf: settings win per side", () => {
   assert.deepEqual(bandOf({ below: 0.3 }, undefined), { below: 0.3, above: 0 });
   assert.deepEqual(bandOf({ below: 0, above: 0 }, deadzone), undefined);
   assert.equal(bandOf(undefined, undefined), undefined);
+});
+
+test("wallMinute follows the clock across DST", () => {
+  const tz = process.env.TZ;
+  process.env.TZ = "Europe/Warsaw";
+  try {
+    // 2026-10-25: 3:00 CEST becomes 2:00 CET (a 25-hour day).
+    const day = new Date(2026, 9, 25);
+    const at = (iso: string) => Date.parse(iso);
+    assert.equal(wallMinute(at("2026-10-25T01:30:00+02:00"), day), 90);
+    assert.equal(wallMinute(at("2026-10-25T11:00:00+01:00"), day), 660); // 11:00, not 12:00
+    // The repeated hour does not go back once a later time was seen.
+    assert.equal(wallMinute(at("2026-10-25T02:30:00+01:00"), day, 170), 170);
+    assert.equal(wallMinute(at("2026-10-25T23:59:00+01:00"), day) < 1440, true);
+    assert.equal(wallMinute(at("2026-10-26T00:30:00+01:00"), day), 1440);
+    assert.equal(wallMinute(at("2026-10-24T23:00:00+02:00"), day), 0);
+    // 2026-03-29: 2:00 CET becomes 3:00 CEST (a 23-hour day).
+    assert.equal(wallMinute(at("2026-03-29T10:00:00+02:00"), new Date(2026, 2, 29)), 600);
+  } finally {
+    process.env.TZ = tz;
+  }
 });
