@@ -70,10 +70,17 @@
   const hass = {
     language: "pl", locale: { language: "pl" }, user: { is_admin: true },
     states: { "climate.sypialnia_termostat": { entity_id: "climate.sypialnia_termostat", state: params.get("mode") ?? "heat",
-      attributes: { friendly_name: "Sypialnia Termostat", current_temperature: 19.6, temperature: 19 } },
+      attributes: { friendly_name: "Sypialnia Termostat", current_temperature: 19.6, temperature: 19, hvac_modes: ["off", "heat"] } },
       "number.sypialnia_termostat_deadzone_temperature": { entity_id: "number.sypialnia_termostat_deadzone_temperature", state: params.get("band") ?? "1", attributes: {} },
       "climate.biuro_termostat": { entity_id: "climate.biuro_termostat", state: "off",
       attributes: { friendly_name: "Biuro Termostat", current_temperature: 20.8, temperature: 21 } } },
+    // climate.set_hvac_mode flips the mocked state (window.lastService records the call)
+    callService: async (domain, service, data) => {
+      window.lastService = { domain, service, data };
+      const st = hass.states[data.entity_id];
+      hass.states = { ...hass.states, [data.entity_id]: { ...st, state: data.hvac_mode } };
+      document.querySelectorAll("heating-schedule-card, heating-schedule-chart-card").forEach((c) => { c.hass = { ...hass }; });
+    },
     connection: { subscribeMessage: async (cb, msg) => { subs.push(cb); setTimeout(() => cb(info)); return async () => {}; } },
     callWS: async (msg) => {
       if (msg.type === "history/history_during_period") {

@@ -57,6 +57,7 @@ export interface Hass {
     ): Promise<() => Promise<void>>;
   };
   callWS<T>(msg: Record<string, unknown>): Promise<T>;
+  callService(domain: string, service: string, data?: Record<string, unknown>): Promise<unknown>;
 }
 
 interface CardConfig {
@@ -184,6 +185,7 @@ export class HeatingScheduleCard extends LitElement {
   @state() private _config?: CardConfig;
   @state() private _info?: ScheduleInfo;
   @state() private _error?: string;
+  @state() private _modeBusy = false;
   @state() private _day: Day = dayOf(new Date());
   @state() private _draft?: Week;
   @state() private _selected?: number;
@@ -484,6 +486,43 @@ export class HeatingScheduleCard extends LitElement {
     );
   }
 
+  /** The thermostat's mode icon; a button that turns it on or off where it supports both. */
+  private _renderMode(climate: HassEntity, mode: string, icon: string) {
+    const t = this._t;
+    const next = climate.state === "off" ? "heat" : climate.state === "heat" ? "off" : undefined;
+    const modes: string[] = climate.attributes.hvac_modes ?? [];
+    if (!next || !modes.includes(next)) {
+      return html`<ha-icon class="mode ${climate.state}" icon=${icon} title=${mode} aria-label=${mode}></ha-icon>`;
+    }
+    const label = `${mode}: ${next === "off" ? t.mode_turn_off : t.mode_turn_on}`;
+    return html`<button
+      class="mode ${climate.state}"
+      title=${label}
+      aria-label=${label}
+      aria-pressed=${climate.state === "heat" ? "true" : "false"}
+      .disabled=${this._modeBusy}
+      @click=${() => this._setMode(next)}
+    >
+      <ha-icon icon=${icon}></ha-icon>
+    </button>`;
+  }
+
+  private async _setMode(hvacMode: string): Promise<void> {
+    if (!this.hass || !this._config) return;
+    this._modeBusy = true;
+    this._error = undefined;
+    try {
+      await this.hass.callService("climate", "set_hvac_mode", {
+        entity_id: this._config.entity,
+        hvac_mode: hvacMode,
+      });
+    } catch (err: any) {
+      this._error = err?.message ?? String(err);
+    } finally {
+      this._modeBusy = false;
+    }
+  }
+
   private _renderStatus(climate?: HassEntity) {
     if (!climate) return nothing;
     const t = this._t;
@@ -502,7 +541,7 @@ export class HeatingScheduleCard extends LitElement {
       <div class="status">
         <span class="current">${this._fmtTemp(attrs.current_temperature)}</span>
         <span class="target">${t.target} ${this._fmtTemp(attrs.temperature)}</span>
-        <ha-icon class="mode ${climate.state}" icon=${icon} title=${mode} aria-label=${mode}></ha-icon>
+        ${this._renderMode(climate, mode, icon)}
         ${next}
       </div>
       ${info?.enabled && climate.state === "off" ? html`<div class="hint">${t.off_hint}</div>` : nothing}
@@ -1376,6 +1415,16 @@ export class HeatingScheduleCard extends LitElement {
       align-items: center;
       gap: 4px;
       flex-shrink: 0;
+    }
+    button.mode {
+      display: inline-flex;
+      padding: 4px;
+      background: none;
+      border-radius: 50%;
+      --mdc-icon-size: 20px;
+    }
+    button.mode:hover:not(:disabled) {
+      background: var(--secondary-background-color, rgba(127, 127, 127, 0.12));
     }
     button.settings {
       display: inline-flex;

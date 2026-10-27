@@ -120,6 +120,8 @@ entity: climate.bedroom_thermostat
 
 ## Thermostat cards (in the panel)
 
+- The flame icon next to the temperatures turns the thermostat itself on or off (`climate.set_hvac_mode`
+  `heat` / `off`), apart from the schedule switch. The schedule never changes the mode on its own.
 - Day tabs (Mon…Sun). The chart shows the schedule (step line), and for the most recent
   occurrence of that day the measured temperature and the actual target from history,
   plus a "now" marker on today. Periods when the thermostat was heating (`hvac_action: heating`) are
