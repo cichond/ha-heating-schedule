@@ -95,6 +95,17 @@ Adding, renaming and changing presence apply immediately (the entry reloads); no
 These actions need an admin user. The same settings are also available under Settings → Devices &
 services → Heating Schedule.
 
+### Holiday mode
+
+The **Holiday** card at the top of the panel makes every enabled schedule hold one temperature
+(default 18°) instead of its plan, at once and until it is switched off or, if set, until its return date
+(then it ends by itself and the schedules take over again; pick a time a few hours before arriving, so
+the house has warmed up). The schedules themselves are not changed, thermostats with the schedule
+switched off are left alone, and the state survives a restart. While it is on, the panel cards are
+collapsed to one row (tap to open); the chart shows the schedule dashed and the holiday temperature as
+a line. Holiday time is left out of the manual-change statistics, the heat-up times and the occupancy
+profile, so it never shows up in the suggestions.
+
 ## Entities
 
 Attached to the thermostat's device:
@@ -157,7 +168,9 @@ entity: climate.bedroom_thermostat
 `heating_schedule/list`, `heating_schedule/get`, `heating_schedule/save` (`entity_id`, `days?`, `enabled?`),
 `heating_schedule/subscribe` (`entity_id`; sends the schedule now and after every change),
 `heating_schedule/suggestion/apply` and `heating_schedule/suggestion/dismiss` (`entity_id`, `suggestion_id`),
-`heating_schedule/suggestion/ask_ai` (`entity_id`, `full?`).
+`heating_schedule/suggestion/ask_ai` (`entity_id`, `full?`),
+`heating_schedule/vacation/subscribe` (the holiday mode now and after every change),
+`heating_schedule/vacation/set` (`active?`, `temp?` 5–30, `until?`: ISO date-time or `null`).
 Admin only: `heating_schedule/add` (`entity_id`, `init?`: `empty` / `ai`), `heating_schedule/configure` (`entity_id`, `title?`,
 `presence_entities?`), `heating_schedule/remove` (`entity_id`).
 

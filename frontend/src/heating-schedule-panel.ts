@@ -1,8 +1,9 @@
 import { LitElement, css, html, nothing, type PropertyValues } from "lit";
 import { property, state } from "lit/decorators.js";
 
-import type { Hass, ScheduleInfo } from "./heating-schedule-card";
+import type { Hass, ScheduleInfo, Vacation } from "./heating-schedule-card";
 import { strings, type Strings } from "./i18n";
+import { formatLeft, toLocalInput } from "./model";
 
 interface Entry {
   entry_id: string;
@@ -59,6 +60,9 @@ export class HeatingSchedulePanel extends LitElement {
   @state() private _dialog?: Dialog;
   @state() private _dialogError?: string;
   @state() private _busy = false;
+  @state() private _vacation?: Vacation;
+  @state() private _vacationError?: string;
+  private _unsubVacation?: Promise<() => Promise<void>>;
 
   private _cards = new Map<string, Card>();
   private _loading = false;
@@ -76,15 +80,110 @@ export class HeatingSchedulePanel extends LitElement {
     // Entries may have been added or removed while the panel was hidden.
     if (this._entries) this._load();
     this.addEventListener("heating-schedule-settings", this._onSettings);
+    this._subscribeVacation();
   }
 
   disconnectedCallback(): void {
     super.disconnectedCallback();
     this.removeEventListener("heating-schedule-settings", this._onSettings);
+    this._unsubVacation?.then((unsub) => unsub()).catch(() => undefined);
+    this._unsubVacation = undefined;
   }
 
   protected willUpdate(changed: PropertyValues): void {
     if (changed.has("hass") && this.hass && !this._entries) this._load();
+    if (changed.has("hass")) this._subscribeVacation();
+  }
+
+  private _subscribeVacation(): void {
+    if (!this.hass || !this.isConnected || this._unsubVacation) return;
+    const unsub = this.hass.connection.subscribeMessage<Vacation>(
+      (vacation) => (this._vacation = vacation),
+      { type: "heating_schedule/vacation/subscribe" },
+    );
+    this._unsubVacation = unsub;
+    unsub.catch(() => {
+      if (this._unsubVacation === unsub) this._unsubVacation = undefined;
+    });
+  }
+
+  private async _setVacation(data: Record<string, unknown>): Promise<void> {
+    if (!this.hass) return;
+    this._vacationError = undefined;
+    try {
+      this._vacation = await this.hass.callWS<Vacation>({ type: "heating_schedule/vacation/set", ...data });
+    } catch (err: any) {
+      this._vacationError = err?.message ?? String(err);
+    }
+  }
+
+  private _stepVacation(delta: number): void {
+    const temp = (this._vacation?.temp ?? 18) + delta;
+    if (temp >= 5 && temp <= 30) this._setVacation({ temp });
+  }
+
+  private _renderVacation() {
+    const v = this._vacation;
+    if (!v) return nothing;
+    const t = this._t;
+    const lang = this.hass?.locale?.language ?? this.hass?.language ?? "en";
+    const temp = `${v.temp.toLocaleString(lang, { maximumFractionDigits: 1 })}°`;
+    const until = v.until ? new Date(v.until) : undefined;
+    const left = until ? formatLeft((until.getTime() - Date.now()) / 60000) : undefined;
+    return html`<section class="vacation ${v.active ? "on" : ""}">
+      <div class="vacation-head">
+        <ha-icon icon="mdi:bag-suitcase"></ha-icon>
+        <h2>${t.vacation_title}</h2>
+        <label class="vacation-switch">
+          <span>${t.vacation_on}</span>
+          <ha-switch
+            .checked=${v.active}
+            @change=${(ev: Event) => this._setVacation({ active: (ev.target as HTMLInputElement).checked })}
+          ></ha-switch>
+        </label>
+      </div>
+      <div class="vacation-fields">
+        <div class="vacation-field">
+          <span class="label">${t.vacation_temp}</span>
+          <div class="stepper">
+            <button aria-label=${t.vacation_lower} @click=${() => this._stepVacation(-0.5)}>−</button>
+            <span class="value">${temp}</span>
+            <button aria-label=${t.vacation_higher} @click=${() => this._stepVacation(0.5)}>+</button>
+          </div>
+        </div>
+        <div class="vacation-field">
+          <label class="label" for="vacation-until">${t.vacation_until}</label>
+          <div class="until">
+            <input
+              id="vacation-until"
+              type="datetime-local"
+              .value=${until ? toLocalInput(until) : ""}
+              @change=${(ev: Event) => {
+                const value = (ev.target as HTMLInputElement).value;
+                this._setVacation({ until: value ? new Date(value).toISOString() : null });
+              }}
+            />
+            ${until
+              ? html`<button
+                  class="clear"
+                  title=${t.vacation_until_clear}
+                  aria-label=${t.vacation_until_clear}
+                  @click=${() => this._setVacation({ until: null })}
+                >
+                  <ha-icon icon="mdi:close"></ha-icon>
+                </button>`
+              : nothing}
+          </div>
+        </div>
+      </div>
+      <p class="help">
+        ${v.active
+          ? html`${t.vacation_active.replace("{temp}", temp)}
+            ${left ? t.vacation_left.replace("{left}", left) : t.vacation_until_none}`
+          : t.vacation_hint}
+      </p>
+      ${this._vacationError ? html`<div class="error">${this._vacationError}</div>` : nothing}
+    </section>`;
   }
 
   protected updated(): void {
@@ -331,6 +430,7 @@ export class HeatingSchedulePanel extends LitElement {
       <div class="content">
         ${this._error ? html`<div class="error">${this._error}</div>` : nothing}
         ${entries && !entries.length ? html`<p class="empty">${t.panel_empty}</p>` : nothing}
+        ${entries?.length ? this._renderVacation() : nothing}
         ${this._renderCards(entries ?? [])}
       </div>
       ${this._renderDialog()}
@@ -449,6 +549,103 @@ export class HeatingSchedulePanel extends LitElement {
       max-width: 1600px;
       margin: 0 auto;
       box-sizing: border-box;
+    }
+    .vacation {
+      max-width: 560px;
+      margin: 0 0 16px;
+      padding: 16px;
+      border-radius: var(--ha-card-border-radius, 12px);
+      background: var(--card-background-color, #fff);
+      border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.3));
+      box-sizing: border-box;
+    }
+    .vacation.on {
+      border-color: var(--primary-color, #03a9f4);
+    }
+    .vacation-head {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--primary-text-color);
+    }
+    .vacation-head ha-icon {
+      color: var(--primary-color, #03a9f4);
+    }
+    .vacation-head h2 {
+      flex: 1;
+      margin: 0;
+      font-size: 1.15em;
+    }
+    .vacation-switch {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--secondary-text-color);
+      font-size: 0.9em;
+    }
+    .vacation-fields {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin: 14px 0 10px;
+    }
+    .vacation-field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      background: var(--secondary-background-color, rgba(127, 127, 127, 0.12));
+      min-width: 0;
+    }
+    .vacation-field .label {
+      font-size: 0.8em;
+      color: var(--secondary-text-color);
+    }
+    .stepper {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .stepper button {
+      width: 36px;
+      height: 36px;
+      padding: 0;
+      border-radius: 50%;
+      font-size: 1.2em;
+    }
+    .stepper .value {
+      font-size: 1.4em;
+    }
+    .until {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .until input {
+      flex: 1;
+      min-width: 0;
+      height: 36px;
+      font: inherit;
+      color: var(--primary-text-color);
+      background: none;
+      border: 0;
+      color-scheme: light dark;
+    }
+    button.clear {
+      display: inline-flex;
+      padding: 6px;
+      background: none;
+      --mdc-icon-size: 18px;
+    }
+    .vacation .help {
+      margin: 0;
+    }
+    @media (max-width: 420px) {
+      .vacation-fields {
+        grid-template-columns: minmax(0, 1fr);
+      }
     }
     .floor {
       margin: 8px 4px 12px;

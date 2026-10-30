@@ -20,7 +20,9 @@ from .const import (
     BAND_MAX,
     CONF_CLIMATE_ENTITY,
     CONF_PRESENCE_ENTITIES,
+    DATA_VACATION,
     DOMAIN,
+    SIGNAL_VACATION,
     signal_updated,
 )
 from .controller import ScheduleController, async_find_controller, async_find_entry
@@ -41,6 +43,8 @@ def async_register_websocket(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_suggestion_ask_ai)
     websocket_api.async_register_command(hass, ws_add)
     websocket_api.async_register_command(hass, ws_remove)
+    websocket_api.async_register_command(hass, ws_vacation_subscribe)
+    websocket_api.async_register_command(hass, ws_vacation_set)
 
 
 @websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/list"})
@@ -283,3 +287,47 @@ async def ws_suggestion_ask_ai(
         connection.send_error(msg["id"], "ai_failed", str(err))
         return
     connection.send_result(msg["id"], {"count": count, "info": controller.as_dict()})
+
+
+VACATION_MIN = 5.0
+VACATION_MAX = 30.0
+
+
+@websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/vacation/subscribe"})
+@callback
+def ws_vacation_subscribe(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Send the holiday mode now and after every change."""
+
+    @callback
+    def _forward(summary: dict[str, Any]) -> None:
+        connection.send_message(websocket_api.event_message(msg["id"], summary))
+
+    connection.subscriptions[msg["id"]] = async_dispatcher_connect(hass, SIGNAL_VACATION, _forward)
+    connection.send_result(msg["id"])
+    _forward(hass.data[DATA_VACATION].state.summary())
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/vacation/set",
+        vol.Optional("active"): cv.boolean,
+        vol.Optional("temp"): vol.All(
+            vol.Coerce(float), vol.Range(min=VACATION_MIN, max=VACATION_MAX)
+        ),
+        # None: no return date (until switched off by hand).
+        vol.Optional("until"): vol.Any(None, cv.datetime),
+    }
+)
+@websocket_api.async_response
+async def ws_vacation_set(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Switch the holiday mode, or change its temperature or return date."""
+    manager = hass.data[DATA_VACATION]
+    kwargs: dict[str, Any] = {key: msg[key] for key in ("active", "temp") if key in msg}
+    if "until" in msg:
+        kwargs["until"] = msg["until"]
+    await manager.async_set(**kwargs)
+    connection.send_result(msg["id"], manager.state.summary())

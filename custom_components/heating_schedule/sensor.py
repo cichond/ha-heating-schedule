@@ -41,12 +41,12 @@ class ScheduledTemperatureSensor(ScheduleEntity, SensorEntity):
 
     @property
     def native_value(self) -> float | None:
-        return self.controller.slot.temp if self.controller.slot else None
+        return self.controller.effective()
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        slot = self.controller.slot
+        next_change, next_temp = self.controller.next_change()
         return {
-            ATTR_NEXT_CHANGE: slot.next_change.isoformat() if slot and slot.next_change else None,
-            ATTR_NEXT_TEMPERATURE: slot.next_temp if slot else None,
+            ATTR_NEXT_CHANGE: next_change.isoformat() if next_change else None,
+            ATTR_NEXT_TEMPERATURE: next_temp,
         }

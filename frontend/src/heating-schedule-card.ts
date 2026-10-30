@@ -71,6 +71,13 @@ interface CardConfig {
   readonly?: boolean;
 }
 
+export interface Vacation {
+  active: boolean;
+  temp: number;
+  until: string | null;
+  since: string | null;
+}
+
 export interface ScheduleInfo {
   entry_id: string;
   title: string;
@@ -78,6 +85,8 @@ export interface ScheduleInfo {
   enabled: boolean;
   days: Week;
   current: { temp: number | null; next_change: string | null; next_temp: number | null };
+  /** Holiday mode, shared by all thermostats. */
+  vacation?: Vacation | null;
   presence: {
     entities: string[];
     occupied: boolean | null;
@@ -186,6 +195,8 @@ export class HeatingScheduleCard extends LitElement {
   @state() private _info?: ScheduleInfo;
   @state() private _error?: string;
   @state() private _modeBusy = false;
+  /** On holiday a panel card is collapsed to one row until opened. */
+  @state() private _expanded = false;
   @state() private _day: Day = dayOf(new Date());
   @state() private _draft?: Week;
   @state() private _selected?: number;
@@ -394,6 +405,12 @@ export class HeatingScheduleCard extends LitElement {
     );
   }
 
+  /** Holiday temperature while this schedule follows the holiday mode, else undefined. */
+  private get _holidayTemp(): number | undefined {
+    const v = this._info?.vacation;
+    return this._info?.enabled && v?.active ? v.temp : undefined;
+  }
+
   private _fmtBand({ below, above }: Band): string {
     if (below === above) return `±${this._fmtTemp(below)}`;
     if (!above) return `−${this._fmtTemp(below)}`;
@@ -404,6 +421,7 @@ export class HeatingScheduleCard extends LitElement {
   private _yRange(pts: Pt[]): [number, number] {
     const band = this._band ?? { below: 0, above: 0 };
     const values = pts.flatMap((p) => [p.t - band.below, p.t + band.above]);
+    if (this._holidayTemp !== undefined) values.push(this._holidayTemp);
     const history = this._history;
     if (history && isoDate(history.date) === isoDate(lastDateOf(this._day))) {
       values.push(...history.current.map((v) => v[1]));
@@ -442,11 +460,38 @@ export class HeatingScheduleCard extends LitElement {
         </ha-card>
       `;
     }
+    const holiday = this._holidayTemp;
+    if (holiday !== undefined && !this._expanded && !this._draft) {
+      return html`<ha-card class="compact">
+        <button class="compact-row" aria-expanded="false" @click=${() => (this._expanded = true)}>
+          <span class="compact-text">
+            <span class="name">${name}</span>
+            <span class="compact-status">
+              ${this._fmtTemp(climate?.attributes.current_temperature)} · ${t.target}
+              ${this._fmtTemp(climate?.attributes.temperature)} (${t.vacation_short})
+            </span>
+          </span>
+          ${this._renderMini(holiday)}
+          <ha-icon icon="mdi:chevron-down"></ha-icon>
+        </button>
+      </ha-card>`;
+    }
     return html`
       <ha-card class=${off ? "disabled" : ""}>
         <div class="header">
           <div class="name">${name}</div>
           <div class="header-end">
+            ${holiday !== undefined
+              ? html`<button
+                  class="settings"
+                  title=${t.vacation_collapse}
+                  aria-label=${t.vacation_collapse}
+                  aria-expanded="true"
+                  @click=${() => (this._expanded = false)}
+                >
+                  <ha-icon icon="mdi:chevron-up"></ha-icon>
+                </button>`
+              : nothing}
             ${this._info
               ? html`<label class="toggle" title=${t.schedule}>
                   <ha-switch
@@ -523,6 +568,25 @@ export class HeatingScheduleCard extends LitElement {
     }
   }
 
+  /** One-line chart for a collapsed card: today's schedule (paused) and the holiday line. */
+  private _renderMini(holiday: number) {
+    const pts = toPts(this._info!.days[dayOf(new Date())]);
+    const temps = [...pts.map((p) => p.t), holiday];
+    const lo = Math.min(...temps) - 0.5;
+    const hi = Math.max(...temps) + 0.5;
+    const x = (m: number) => (m / DAY_MIN) * 120;
+    const y = (v: number) => 32 - ((v - lo) / (hi - lo)) * 28;
+    let line = `M0,${y(pts[0].t)}`;
+    pts.forEach((p, i) => {
+      line += `H${x(segmentEnd(pts, i))}`;
+      if (i + 1 < pts.length) line += `V${y(pts[i + 1].t)}`;
+    });
+    return svg`<svg class="mini" width="120" height="36" viewBox="0 0 120 36" aria-hidden="true">
+      <path class="schedule paused" d=${line}></path>
+      <path class="vacation" d=${`M0,${y(holiday)}H120`}></path>
+    </svg>`;
+  }
+
   private _renderStatus(climate?: HassEntity) {
     if (!climate) return nothing;
     const t = this._t;
@@ -586,10 +650,14 @@ export class HeatingScheduleCard extends LitElement {
     const heatMinutes = historyHere ? history!.heating.reduce((sum, [a, b]) => sum + b - a, 0) : 0;
     return html`
       <div class="legend">
-        <span><i class="line schedule"></i>${t.legend_schedule}</span>
+        ${this._holidayTemp !== undefined && this._day === dayOf(new Date())
+          ? html`<span><i class="line vacation"></i>${t.legend_vacation}
+                <b>${this._fmtTemp(this._holidayTemp)}</b></span>
+              <span><i class="line paused"></i>${t.legend_schedule_paused}</span>`
+          : html`<span><i class="line schedule"></i>${t.legend_schedule}</span>`}
         <span><i class="line current"></i>${t.legend_current}</span>
         <span><i class="line target"></i>${t.legend_target}</span>
-        ${this._band
+        ${this._band && !(this._holidayTemp !== undefined && this._day === dayOf(new Date()))
           ? html`<span><i class="swatch band"></i>${t.legend_band}
               <b>${this._fmtBand(this._band)}</b></span>`
           : nothing}
@@ -673,6 +741,7 @@ export class HeatingScheduleCard extends LitElement {
     const currentTemp = this.hass?.states[this._config!.entity]?.attributes.current_temperature;
     const drag = this._drag;
     const band = this._band;
+    const holidayToday = isToday ? this._holidayTemp : undefined;
 
     return html`<svg
       width=${W}
@@ -708,8 +777,8 @@ export class HeatingScheduleCard extends LitElement {
           <text class="axis" x=${x(m)} y=${H - 5}
             text-anchor=${m === v0 ? "start" : m === v1 ? "end" : "middle"}>${m % 60 ? formatTime(m) : m / 60}</text>`,
       )}
-      <path class="area" d=${area}></path>
-      ${band
+      ${holidayToday === undefined ? svg`<path class="area" d=${area}></path>` : nothing}
+      ${band && holidayToday === undefined
         ? pts.map((p, i) => {
             const top = y(Math.min(p.t + band.above, hi));
             const height = y(Math.max(p.t - band.below, lo)) - top;
@@ -725,7 +794,10 @@ export class HeatingScheduleCard extends LitElement {
         : nothing}
       ${this._renderProfile(x, plotW, PAD.t + plotH + 7)}
       ${currentPath ? svg`<path class="current" d=${currentPath}></path>` : nothing}
-      <path class="schedule" d=${line}></path>
+      <path class="schedule ${holidayToday !== undefined ? "paused" : ""}" d=${line}></path>
+      ${holidayToday !== undefined
+        ? svg`<path class="vacation" d=${`M${x(0)},${y(holidayToday)}H${x(DAY_MIN)}`}></path>`
+        : nothing}
       ${this._selected !== undefined && editing && pts[this._selected]
         ? svg`<line class="selected" x1=${x(pts[this._selected].m)} x2=${x(segmentEnd(pts, this._selected))}
             y1=${y(pts[this._selected].t)} y2=${y(pts[this._selected].t)}></line>`
@@ -1397,6 +1469,36 @@ export class HeatingScheduleCard extends LitElement {
     ha-card.disabled .name {
       opacity: 0.7;
     }
+    ha-card.compact {
+      padding: 0;
+    }
+    button.compact-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      width: 100%;
+      padding: 12px 16px;
+      background: none;
+      border: 0;
+      border-radius: inherit;
+      text-align: start;
+      font-size: 1em;
+      color: inherit;
+    }
+    .compact-text {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      flex: 1;
+      min-width: 0;
+    }
+    .compact-status {
+      color: var(--secondary-text-color);
+      font-size: 0.9em;
+    }
+    svg.mini {
+      flex-shrink: 0;
+    }
     .header {
       display: flex;
       align-items: center;
@@ -1732,6 +1834,16 @@ export class HeatingScheduleCard extends LitElement {
       stroke-width: 2.5;
       stroke-linejoin: round;
     }
+    .schedule.paused {
+      stroke: var(--secondary-text-color);
+      stroke-width: 1.5;
+      stroke-dasharray: 4 4;
+    }
+    .vacation {
+      fill: none;
+      stroke: var(--hs-schedule);
+      stroke-width: 2.5;
+    }
     svg .selected {
       stroke: var(--accent-color, #ff9800);
       stroke-width: 5;
@@ -1802,6 +1914,9 @@ export class HeatingScheduleCard extends LitElement {
     }
     .line.current {
       border-top: 2px solid var(--hs-current);
+    }
+    .line.paused {
+      border-top: 1.5px dashed var(--secondary-text-color);
     }
     .line.target {
       border-top: 2px dashed var(--hs-target);

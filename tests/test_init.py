@@ -207,3 +207,38 @@ async def test_dashboard_resource(hass: HomeAssistant, setup) -> None:
     assert [item["url"] for item in resources.async_items()] == [
         "/heating_schedule_static/heating-schedule-card.js?v=9"
     ]
+
+
+async def test_vacation_holds_one_temperature_until_its_end(
+    hass: HomeAssistant, setup, freezer: FrozenDateTimeFactory
+) -> None:
+    entry, calls = setup
+    manager = hass.data[f"{DOMAIN}_vacation"]
+    until = dt_util.now() + timedelta(hours=2)
+    await manager.async_set(active=True, temp=16, until=until)
+    await hass.async_block_till_done()
+    assert [c.data["temperature"] for c in calls] == [16]
+    sensor = hass.states.get("sensor.office_scheduled_temperature")
+    assert sensor.state == "16.0"
+    assert sensor.attributes["next_change"] == dt_util.as_utc(until).isoformat()
+    info = entry.runtime_data.as_dict()
+    assert info["vacation"]["active"] and info["vacation"]["temp"] == 16
+    assert "periods" not in info["vacation"]
+
+    # The return date ends it; the schedule (18 everywhere) is back.
+    freezer.tick(timedelta(hours=2, minutes=1))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    assert not manager.state.active
+    assert manager.state.until is None
+    assert hass.states.get("sensor.office_scheduled_temperature").state == "18.0"
+    assert len(manager.state.periods) == 1
+
+
+async def test_vacation_skips_disabled_schedules(hass: HomeAssistant, setup) -> None:
+    entry, calls = setup
+    await entry.runtime_data.async_update(enabled=False)
+    await hass.data[f"{DOMAIN}_vacation"].async_set(active=True)
+    await hass.async_block_till_done()
+    assert calls == []
+    assert entry.runtime_data.effective() == 18

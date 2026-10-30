@@ -57,6 +57,19 @@ export function formatDuration(minutes: number): string {
   return h ? `${h} h ${total % 60} min` : `${total} min`;
 }
 
+/** Time left: 8 days 5 h -> "8 d 5 h"; under a day as formatDuration. */
+export function formatLeft(minutes: number): string {
+  const total = Math.max(0, Math.round(minutes));
+  const days = Math.floor(total / DAY_MIN);
+  return days ? `${days} d ${Math.floor((total % DAY_MIN) / 60)} h` : formatDuration(total);
+}
+
+/** A date as the value of an <input type="datetime-local"> (local time, minutes). */
+export function toLocalInput(date: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
 export function tempAt(pts: Pt[], minute: number): number {
   let t = pts[0].t;
   for (const p of pts) {

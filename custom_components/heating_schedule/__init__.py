@@ -19,6 +19,7 @@ from homeassistant.loader import async_get_integration
 from .const import (
     CARD_FILENAME,
     CONF_CLIMATE_ENTITY,
+    DATA_VACATION,
     DEFAULT_TEMPERATURE,
     DOMAIN,
     FRONTEND_URL_BASE,
@@ -29,6 +30,7 @@ from .controller import ScheduleController
 from .schedule import default_schedule
 from .services import async_register_services
 from .store import ScheduleStore
+from .vacation_manager import VacationManager
 from .websocket import async_register_websocket
 
 _LOGGER = logging.getLogger(__name__)
@@ -45,6 +47,9 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     store = ScheduleStore(hass)
     await store.async_load()
     hass.data[DOMAIN] = store
+    vacation = VacationManager(hass, store)
+    hass.data[DATA_VACATION] = vacation
+    await vacation.async_start()
 
     integration = await async_get_integration(hass, DOMAIN)
     await hass.http.async_register_static_paths(

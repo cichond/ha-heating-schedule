@@ -37,6 +37,10 @@
   const workday = [{time:"00:00",temp:19},{time:"05:30",temp:21},{time:"08:30",temp:19},{time:"19:00",temp:21},{time:"22:00",temp:19}];
   const weekend = [{time:"00:00",temp:19},{time:"06:30",temp:21},{time:"10:00",temp:19},{time:"19:00",temp:21},{time:"22:30",temp:19}];
   const days = {mon:workday,tue:workday,wed:workday,thu:workday,fri:workday,sat:weekend,sun:weekend};
+  const vacSubs = [];
+  let vacation = params.has("vacation")
+    ? { active: true, temp: 18, until: new Date(Date.now() + (8 * 24 + 5) * 3600e3).toISOString(), since: new Date().toISOString() }
+    : { active: false, temp: 18, until: null, since: null };
   let info = { entry_id: "x", title: "Sypialnia", climate_entity: "climate.sypialnia_termostat", enabled: true, days,
     current: { temp: 19, next_change: new Date(new Date().setHours(19,0,0,0)).toISOString(), next_temp: 21 },
     limits: { min: 5, max: 45, step: 1 }, switch_entity: "switch.sypialnia_termostat_harmonogram", sensor_entity: null,
@@ -81,12 +85,21 @@
       hass.states = { ...hass.states, [data.entity_id]: { ...st, state: data.hvac_mode } };
       document.querySelectorAll("heating-schedule-card, heating-schedule-chart-card").forEach((c) => { c.hass = { ...hass }; });
     },
-    connection: { subscribeMessage: async (cb, msg) => { subs.push(cb); setTimeout(() => cb(info)); return async () => {}; } },
+    // ?vacation: holiday mode on (return in 8 days); vacation/set updates it
+    connection: { subscribeMessage: async (cb, msg) => {
+      if (msg.type === "heating_schedule/vacation/subscribe") { vacSubs.push(cb); setTimeout(() => cb(vacation)); return async () => {}; }
+      info = { ...info, vacation }; subs.push(cb); setTimeout(() => cb(info)); return async () => {}; } },
     callWS: async (msg) => {
       if (msg.type === "history/history_during_period") {
         const t0 = new Date(msg.start_time).getTime() / 1000;
         return { [msg.entity_ids[0]]: history(msg.start_time),
           "binary_sensor.sypialnia_termostat_obecnosc": [{ s: "on", lu: t0 }, { s: "off", lu: t0 + 6.6 * 3600 }, { s: "on", lu: t0 + 7 * 3600 }, { s: "off", lu: t0 + 8.4 * 3600 }] };
+      }
+      if (msg.type === "heating_schedule/vacation/set") {
+        vacation = { ...vacation, ...msg }; delete vacation.type;
+        if (msg.active === true && !vacation.since) vacation.since = new Date().toISOString();
+        if (msg.active === false) { vacation.since = null; vacation.until = null; }
+        info = { ...info, vacation }; vacSubs.forEach((cb) => cb(vacation)); subs.forEach((cb) => cb(info)); return vacation;
       }
       if (msg.type === "heating_schedule/save") { info = { ...info, ...(msg.days ? { days: msg.days } : {}), ...(msg.enabled !== undefined ? { enabled: msg.enabled } : {}) }; subs.forEach(cb => cb(info)); window.lastSave = msg; return info; }
       if (msg.type === "brands/access_token") return { token: "dev" };

@@ -5,6 +5,7 @@ import {
   dayOf,
   dropEmpty,
   formatDuration,
+  formatLeft,
   bandOf,
   formatTime,
   sensitivity,
@@ -13,6 +14,7 @@ import {
   removeSegment,
   splitSegment,
   tempAt,
+  toLocalInput,
   toPts,
   wallMinute,
 } from "../src/model.ts";
@@ -133,4 +135,11 @@ test("wallMinute follows the clock across DST", () => {
   } finally {
     process.env.TZ = tz;
   }
+});
+
+test("formatLeft and toLocalInput", () => {
+  assert.equal(formatLeft(8 * 1440 + 5 * 60 + 20), "8 d 5 h");
+  assert.equal(formatLeft(90), "1 h 30 min");
+  assert.equal(formatLeft(-5), "0 min");
+  assert.equal(toLocalInput(new Date(2026, 10, 7, 14, 5)), "2026-11-07T14:05");
 });

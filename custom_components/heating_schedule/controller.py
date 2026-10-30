@@ -53,6 +53,7 @@ from .const import (
     CONF_BAND_BELOW,
     CONF_CLIMATE_ENTITY,
     CONF_PRESENCE_ENTITIES,
+    DATA_VACATION,
     DEFAULT_STEP,
     DOMAIN,
     PROFILE_BACKFILL_DAYS,
@@ -80,6 +81,7 @@ from .suggest import (
     suggestions_from_week,
     visible,
 )
+from .vacation import Period, overlaps
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -94,6 +96,9 @@ class ScheduleController:
 
     Only the target temperature is set; the HVAC mode is left to the user.
     A manual change holds until the next schedule point changes the target.
+    While the holiday mode is on, an enabled schedule holds its temperature
+    instead (the schedule itself is kept), and those periods are left out of
+    the statistics and the occupancy profile.
 
     Optional presence entities (entry options): any of them present = room
     occupied. They only feed the occupancy sensor and profile (shown on the
@@ -155,13 +160,35 @@ class ScheduleController:
             "step": attrs.get(ATTR_TARGET_TEMP_STEP) or DEFAULT_STEP,
         }
 
+    def _vacation_temp(self) -> float | None:
+        manager = self.hass.data.get(DATA_VACATION)
+        return manager.temperature() if manager is not None and self.enabled else None
+
+    def _vacation_periods(self) -> list[Period]:
+        manager = self.hass.data.get(DATA_VACATION)
+        return manager.periods() if manager is not None else []
+
     def effective(self) -> float | None:
         """Target the thermostat should have now."""
+        if (temp := self._vacation_temp()) is not None:
+            return temp
         return self.slot.temp if self.slot else None
+
+    def next_change(self) -> tuple[datetime | None, float | None]:
+        """When the target changes next and to what (on holiday: its return date, if set)."""
+        if self._vacation_temp() is not None:
+            manager = self.hass.data[DATA_VACATION]
+            until = manager.state.until
+            if until is None:
+                return None, None
+            return until, temperature_at(self.days, dt_util.as_local(until))
+        slot = self.slot
+        return (slot.next_change, slot.next_temp) if slot else (None, None)
 
     def as_dict(self) -> dict[str, Any]:
         """Payload for the frontend."""
-        slot = self.slot
+        next_change, next_temp = self.next_change()
+        manager = self.hass.data.get(DATA_VACATION)
         registry = er.async_get(self.hass)
         return {
             "entry_id": self.entry.entry_id,
@@ -170,10 +197,11 @@ class ScheduleController:
             "enabled": self.enabled,
             "days": self.days,
             "current": {
-                "temp": slot.temp if slot else None,
-                "next_change": slot.next_change.isoformat() if slot and slot.next_change else None,
-                "next_temp": slot.next_temp if slot else None,
+                "temp": self.effective(),
+                "next_change": next_change.isoformat() if next_change else None,
+                "next_temp": next_temp,
             },
+            "vacation": manager.state.summary() if manager is not None else None,
             "presence": {
                 "entities": self.presence_entities,
                 "occupied": self.room.present if self.room else None,
@@ -322,6 +350,12 @@ class ScheduleController:
             _LOGGER.debug("%s is back, applying schedule", self.climate_entity)
             await self.async_apply()
 
+    async def async_vacation_changed(self) -> None:
+        """The holiday mode changed: show it, and set the new target at once."""
+        self._notify()
+        if self.enabled:
+            await self.async_apply()
+
     async def async_apply(self) -> None:
         """Set the effective target temperature on the thermostat."""
         temp = self.effective()
@@ -397,8 +431,10 @@ class ScheduleController:
                 return
             series = await self._async_presence_history(start, end)
             slots = occupancy_slots(series, start, end)
+            holidays = self._vacation_periods()
             for slot_start, fraction in slots:
-                self.profile.add(dt_util.as_local(slot_start), fraction)
+                if not overlaps(slot_start, slot_start + SLOT, holidays):  # nobody home
+                    self.profile.add(dt_util.as_local(slot_start), fraction)
             if not slots:
                 self.profile.last_sample = end
             self._store.set_profile(
@@ -427,6 +463,7 @@ class ScheduleController:
             if end - start < SLOT:
                 return
             samples = await self._async_climate_history(start - HEATUP_LOOKBACK, now)
+            holidays = self._vacation_periods()  # their targets are not the household's habits
             deviations = 0
             if self.enabled:
                 limits, days = self.limits(), self.days
@@ -440,9 +477,15 @@ class ScheduleController:
                     )
 
                 for slot, deviation in deviation_slots(samples, start, end, planned):
+                    if overlaps(slot, slot + SLOT, holidays):
+                        continue
                     self.stats.manual.add(dt_util.as_local(slot), deviation)
                     deviations += 1
-            self.stats.heatup.add(heatup_runs(samples))
+            self.stats.heatup.add(
+                run
+                for run in heatup_runs(samples)
+                if not overlaps(run.start, run.start + timedelta(minutes=run.minutes), holidays)
+            )
             self.stats.last_sample = end
             self._store.set_stats(self.entry.entry_id, self.stats.as_dict())
         _LOGGER.debug(

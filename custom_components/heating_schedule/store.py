@@ -14,7 +14,8 @@ PROFILE_SAVE_DELAY = 60
 
 
 class ScheduleStore:
-    """Schedules keyed by config entry id: ``{"enabled": bool, "days": {...}}``.
+    """Schedules keyed by config entry id: ``{"enabled": bool, "days": {...}}``, plus the
+    holiday mode shared by all of them.
 
     Occupancy profiles and thermostat statistics live in separate files, as
     they change every hour.
@@ -25,12 +26,14 @@ class ScheduleStore:
         self._profile_store: Store[dict[str, Any]] = Store(hass, 1, PROFILE_STORAGE_KEY)
         self._stats_store: Store[dict[str, Any]] = Store(hass, 1, STATS_STORAGE_KEY)
         self._data: dict[str, dict[str, Any]] = {}
+        self._vacation: dict[str, Any] = {}
         self._profiles: dict[str, dict[str, Any]] = {}
         self._stats: dict[str, dict[str, Any]] = {}
 
     async def async_load(self) -> None:
         data = await self._store.async_load() or {}
         self._data = data.get("thermostats", {})
+        self._vacation = data.get("vacation", {})
         profiles = await self._profile_store.async_load() or {}
         self._profiles = profiles.get("profiles", {})
         stats = await self._stats_store.async_load() or {}
@@ -41,6 +44,13 @@ class ScheduleStore:
 
     def set(self, entry_id: str, item: dict[str, Any]) -> None:
         self._data[entry_id] = item
+        self._store.async_delay_save(self._data_to_save, SAVE_DELAY)
+
+    def get_vacation(self) -> dict[str, Any]:
+        return self._vacation
+
+    def set_vacation(self, vacation: dict[str, Any]) -> None:
+        self._vacation = vacation
         self._store.async_delay_save(self._data_to_save, SAVE_DELAY)
 
     def get_profile(self, entry_id: str) -> dict[str, Any] | None:
@@ -70,7 +80,7 @@ class ScheduleStore:
             self._stats_store.async_delay_save(self._stats_to_save, SAVE_DELAY)
 
     def _data_to_save(self) -> dict[str, Any]:
-        return {"thermostats": self._data}
+        return {"thermostats": self._data, "vacation": self._vacation}
 
     def _profiles_to_save(self) -> dict[str, Any]:
         return {"profiles": self._profiles}

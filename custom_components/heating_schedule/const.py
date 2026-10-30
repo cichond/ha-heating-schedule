@@ -15,6 +15,10 @@ PANEL_URL = "heating-schedule"
 PANEL_ICON = "mdi:radiator"
 
 
+SIGNAL_VACATION = f"{DOMAIN}_vacation"
+DATA_VACATION = f"{DOMAIN}_vacation"
+
+
 def signal_updated(climate_entity: str) -> str:
     """Dispatcher signal sent when the schedule of ``climate_entity`` changes."""
     return f"{DOMAIN}_updated_{climate_entity}"
