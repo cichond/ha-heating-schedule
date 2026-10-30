@@ -57,11 +57,12 @@ export function formatDuration(minutes: number): string {
   return h ? `${h} h ${total % 60} min` : `${total} min`;
 }
 
-/** Time left: 8 days 5 h -> "8 d 5 h"; under a day as formatDuration. */
-export function formatLeft(minutes: number): string {
+/** Time left: 8 days 5 h -> "8 dni 5 h" (``day``/``days`` name the unit); under a day as formatDuration. */
+export function formatLeft(minutes: number, day = "d", days = "d"): string {
   const total = Math.max(0, Math.round(minutes));
-  const days = Math.floor(total / DAY_MIN);
-  return days ? `${days} d ${Math.floor((total % DAY_MIN) / 60)} h` : formatDuration(total);
+  const whole = Math.floor(total / DAY_MIN);
+  if (!whole) return formatDuration(total);
+  return `${whole} ${whole === 1 ? day : days} ${Math.floor((total % DAY_MIN) / 60)} h`;
 }
 
 /** A date as the value of an <input type="datetime-local"> (local time, minutes). */

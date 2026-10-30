@@ -129,7 +129,13 @@ export class HeatingSchedulePanel extends LitElement {
     const lang = this.hass?.locale?.language ?? this.hass?.language ?? "en";
     const temp = `${v.temp.toLocaleString(lang, { maximumFractionDigits: 1 })}°`;
     const until = v.until ? new Date(v.until) : undefined;
-    const left = until ? formatLeft((until.getTime() - Date.now()) / 60000) : undefined;
+    const left = until
+      ? formatLeft((until.getTime() - Date.now()) / 60000, t.vacation_day, t.vacation_days)
+      : undefined;
+    // Short, as on the day tabs: "Nd 8.11, 14:00".
+    const untilText = until
+      ? `${t.days[(until.getDay() + 6) % 7]} ${until.getDate()}.${until.getMonth() + 1}, ${toLocalInput(until).slice(11)}`
+      : t.vacation_until_unset;
     return html`<section class="vacation ${v.active ? "on" : ""}">
       <div class="vacation-head">
         <ha-icon icon="mdi:bag-suitcase"></ha-icon>
@@ -154,6 +160,8 @@ export class HeatingSchedulePanel extends LitElement {
         <div class="vacation-field">
           <label class="label" for="vacation-until">${t.vacation_until}</label>
           <div class="until">
+            <span class="until-text ${until ? "" : "unset"}">${untilText}</span>
+            <!-- The native picker, invisible over the text: a tap opens it. -->
             <input
               id="vacation-until"
               type="datetime-local"
@@ -609,6 +617,7 @@ export class HeatingSchedulePanel extends LitElement {
       gap: 8px;
     }
     .stepper button {
+      flex-shrink: 0;
       width: 36px;
       height: 36px;
       padding: 0;
@@ -619,21 +628,35 @@ export class HeatingSchedulePanel extends LitElement {
       font-size: 1.4em;
     }
     .until {
+      position: relative;
       display: flex;
       align-items: center;
       gap: 4px;
+      min-height: 36px;
     }
-    .until input {
+    .until-text {
       flex: 1;
       min-width: 0;
-      height: 36px;
-      font: inherit;
-      color: var(--primary-text-color);
-      background: none;
-      border: 0;
+      font-size: 1.05em;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .until-text.unset {
+      color: var(--secondary-text-color);
+    }
+    .until input {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      opacity: 0;
+      cursor: pointer;
       color-scheme: light dark;
     }
     button.clear {
+      position: relative;
+      z-index: 1;
       display: inline-flex;
       padding: 6px;
       background: none;
@@ -641,11 +664,6 @@ export class HeatingSchedulePanel extends LitElement {
     }
     .vacation .help {
       margin: 0;
-    }
-    @media (max-width: 420px) {
-      .vacation-fields {
-        grid-template-columns: minmax(0, 1fr);
-      }
     }
     .floor {
       margin: 8px 4px 12px;

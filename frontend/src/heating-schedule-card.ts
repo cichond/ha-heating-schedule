@@ -481,17 +481,6 @@ export class HeatingScheduleCard extends LitElement {
         <div class="header">
           <div class="name">${name}</div>
           <div class="header-end">
-            ${holiday !== undefined
-              ? html`<button
-                  class="settings"
-                  title=${t.vacation_collapse}
-                  aria-label=${t.vacation_collapse}
-                  aria-expanded="true"
-                  @click=${() => (this._expanded = false)}
-                >
-                  <ha-icon icon="mdi:chevron-up"></ha-icon>
-                </button>`
-              : nothing}
             ${this._info
               ? html`<label class="toggle" title=${t.schedule}>
                   <ha-switch
@@ -510,6 +499,17 @@ export class HeatingScheduleCard extends LitElement {
                   @click=${this._openSettings}
                 >
                   <ha-icon icon="mdi:cog"></ha-icon>
+                </button>`
+              : nothing}
+            ${holiday !== undefined
+              ? html`<button
+                  class="settings"
+                  title=${t.vacation_collapse}
+                  aria-label=${t.vacation_collapse}
+                  aria-expanded="true"
+                  @click=${() => (this._expanded = false)}
+                >
+                  <ha-icon icon="mdi:chevron-up"></ha-icon>
                 </button>`
               : nothing}
           </div>
